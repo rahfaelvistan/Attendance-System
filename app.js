@@ -177,6 +177,23 @@ const el = {
   btnCloseTeacherPwdModal: document.getElementById('btn-close-teacher-pwd-modal'),
   pwdModalTeacherName: document.getElementById('pwd-modal-teacher-name'),
   pwdModalTeacherId: document.getElementById('pwd-modal-teacher-id'),
+  modalFullscreenQr: document.getElementById('modal-fullscreen-qr'),
+  fullscreenQrCanvas: document.getElementById('fullscreen-qr-canvas'),
+  fullscreenQrTimerText: document.getElementById('fullscreen-qr-timer-text'),
+  
+  // New elements for teacher join QR and student join scanner
+  btnTeacherJoinQr: document.getElementById('btn-teacher-join-qr'),
+  btnStudentJoinScan: document.getElementById('btn-student-join-scan'),
+  modalTeacherJoinQr: document.getElementById('modal-teacher-join-qr'),
+  teacherJoinQrCanvas: document.getElementById('teacher-join-qr-canvas'),
+  teacherJoinQrSelect: document.getElementById('teacher-join-qr-select'),
+  teacherJoinQrTimer: document.getElementById('teacher-join-qr-timer'),
+  btnCloseTeacherJoinQr: document.getElementById('btn-close-teacher-join-qr'),
+  teacherJoinQrSubjectName: document.getElementById('teacher-join-qr-subject-name'),
+  modalStudentJoinScanner: document.getElementById('modal-student-join-scanner'),
+  studentJoinReader: document.getElementById('student-join-reader'),
+  btnCloseStudentJoinScanner: document.getElementById('btn-close-student-join-scanner'),
+  studentJoinStatus: document.getElementById('student-join-status'),
   
   // Toast
   toast: document.getElementById('toast')
@@ -257,11 +274,22 @@ function routeToView(viewName) {
   // Clear QR generator intervals if leaving student view
   if (viewName !== 'student') {
     stopQrGenerator();
+    stopStudentJoinScanner();
+    if (el.modalFullscreenQr) {
+      toggleModal(el.modalFullscreenQr, false);
+    }
+    if (el.modalStudentJoinScanner) {
+      toggleModal(el.modalStudentJoinScanner, false);
+    }
   }
 
   // Clear scanner if leaving teacher view
   if (viewName !== 'teacher') {
     stopScanner();
+    stopTeacherJoinQrGenerator();
+    if (el.modalTeacherJoinQr) {
+      toggleModal(el.modalTeacherJoinQr, false);
+    }
   }
 
   lucide.createIcons();
@@ -306,7 +334,7 @@ function setupEventListeners() {
     if (state.studentProfile && state.studentProfile.uid) {
       remove(ref(db, `security_tokens/${state.studentProfile.uid}`));
     }
-    el.studentQrContainer.classList.remove('fullscreen');
+    toggleModal(el.modalFullscreenQr, false);
     el.studentQrCard.style.display = 'none';
     state.activeStudentSubject = null;
     stopQrGenerator();
@@ -314,9 +342,14 @@ function setupEventListeners() {
     document.querySelectorAll('.subject-item').forEach(item => item.classList.remove('active'));
   });
 
-  // Toggle fullscreen on QR container click
+  // Toggle fullscreen on QR container click (opens top-level viewport modal)
   el.studentQrContainer.addEventListener('click', () => {
-    el.studentQrContainer.classList.toggle('fullscreen');
+    toggleModal(el.modalFullscreenQr, true);
+  });
+
+  // Close fullscreen on clicking anywhere inside the fullscreen modal
+  el.modalFullscreenQr.addEventListener('click', () => {
+    toggleModal(el.modalFullscreenQr, false);
   });
 
   // Student Calendar Navigation
@@ -369,6 +402,23 @@ function setupEventListeners() {
   el.adminPasswordForm.addEventListener('submit', handleChangeAdminPassword);
   el.teacherPwdChangeForm.addEventListener('submit', handleSaveTeacherPassword);
   el.studentRegistrationForm.addEventListener('submit', handleSaveStudentProfile);
+
+  // Teacher & Student Subject Joining
+  if (el.btnTeacherJoinQr) {
+    el.btnTeacherJoinQr.addEventListener('click', openTeacherJoinQrModal);
+  }
+  if (el.btnCloseTeacherJoinQr) {
+    el.btnCloseTeacherJoinQr.addEventListener('click', closeTeacherJoinQrModal);
+  }
+  if (el.teacherJoinQrSelect) {
+    el.teacherJoinQrSelect.addEventListener('change', (e) => handleTeacherJoinQrSubjectChange(e.target.value));
+  }
+  if (el.btnStudentJoinScan) {
+    el.btnStudentJoinScan.addEventListener('click', openStudentJoinScanner);
+  }
+  if (el.btnCloseStudentJoinScanner) {
+    el.btnCloseStudentJoinScanner.addEventListener('click', closeStudentJoinScanner);
+  }
 }
 
 // ================= AUDIO CHIME SYNTHESIZER =================
@@ -695,6 +745,19 @@ function setupStudentRealTimeData() {
     renderCalendar('student');
   });
   state.dbListeners.push(unsubAttendance);
+
+  // 3. Listen to subject enrollments to filter student subject list
+  const enrollmentsRef = ref(db, 'subject_enrollments');
+  const unsubEnrollments = onValue(enrollmentsRef, (snapshot) => {
+    state.subjectEnrollments = {};
+    if (snapshot.exists()) {
+      state.subjectEnrollments = snapshot.val();
+    }
+    renderStudentSubjectList();
+    renderCalendar('student');
+    calculateStudentStats();
+  });
+  state.dbListeners.push(unsubEnrollments);
 }
 
 // Populate student sidebar subjects list
@@ -702,13 +765,22 @@ function renderStudentSubjectList() {
   el.studentSubjectList.innerHTML = '';
   
   const subjectsArray = Object.values(state.subjects);
+  const studentUid = state.studentProfile ? state.studentProfile.uid : null;
+
+  // Filter subjects where the student is enrolled
+  const enrolledSubjects = subjectsArray.filter(subject => {
+    return studentUid && 
+           state.subjectEnrollments && 
+           state.subjectEnrollments[subject.id] && 
+           state.subjectEnrollments[subject.id][studentUid];
+  });
   
-  if (subjectsArray.length === 0) {
-    el.studentSubjectList.innerHTML = '<div class="empty-state">No subjects configured by Admin yet.</div>';
+  if (enrolledSubjects.length === 0) {
+    el.studentSubjectList.innerHTML = '<div class="empty-state">You haven\'t joined any subjects. Click "Scan to Join Subject" below!</div>';
     return;
   }
 
-  subjectsArray.forEach((subject) => {
+  enrolledSubjects.forEach((subject) => {
     const subjectItem = document.createElement('div');
     subjectItem.className = `subject-item ${state.activeStudentSubject === subject.id ? 'active' : ''}`;
     subjectItem.innerHTML = `
@@ -744,7 +816,7 @@ function selectStudentSubject(subjectId) {
   el.qrDetailName.textContent = `${state.studentProfile.firstName} ${state.studentProfile.lastName}`;
   
   // Initialize with normal mode (not fullscreen)
-  el.studentQrContainer.classList.remove('fullscreen');
+  toggleModal(el.modalFullscreenQr, false);
   el.studentQrCard.style.display = 'block';
 
   // Trigger QR Code generation
@@ -801,6 +873,16 @@ async function generateSecureQR() {
       foreground: '#0b0f19',
       level: 'H'
     });
+
+    // Draw on the top-level fullscreen modal canvas too
+    new QRious({
+      element: el.fullscreenQrCanvas,
+      value: payloadString,
+      size: 600, // HD resolution for fullscreen scan
+      background: '#ffffff',
+      foreground: '#0b0f19',
+      level: 'H'
+    });
   } else {
     console.error("QRious library not loaded.");
   }
@@ -811,6 +893,9 @@ function startQrGenerator() {
   
   state.qrTimeRemaining = 10;
   el.qrTimerText.textContent = `${state.qrTimeRemaining}s`;
+  if (el.fullscreenQrTimerText) {
+    el.fullscreenQrTimerText.textContent = `${state.qrTimeRemaining}s`;
+  }
 
   state.qrInterval = setInterval(() => {
     state.qrTimeRemaining--;
@@ -821,6 +906,9 @@ function startQrGenerator() {
     }
     
     el.qrTimerText.textContent = `${state.qrTimeRemaining}s`;
+    if (el.fullscreenQrTimerText) {
+      el.fullscreenQrTimerText.textContent = `${state.qrTimeRemaining}s`;
+    }
   }, 1000);
 }
 
@@ -835,30 +923,40 @@ function stopQrGenerator() {
 function calculateStudentStats() {
   let totalPresent = 0;
   let totalAbsent = 0;
-  let subjectKeys = Object.keys(state.subjects);
-  let studentUid = state.studentProfile.uid;
+  let studentUid = state.studentProfile ? state.studentProfile.uid : null;
 
-  if (subjectKeys.length === 0) {
+  if (!studentUid) return;
+
+  // Only calculate statistics for enrolled subjects
+  const enrolledSubjectKeys = Object.keys(state.subjects).filter(subjectId => {
+    return state.subjectEnrollments && 
+           state.subjectEnrollments[subjectId] && 
+           state.subjectEnrollments[subjectId][studentUid];
+  });
+
+  if (enrolledSubjectKeys.length === 0) {
     el.studentStatRate.textContent = '0%';
     el.studentStatPresent.textContent = '0';
     el.studentStatAbsent.textContent = '0';
     return;
   }
 
-  // Loop through all attendance logs in DB
-  Object.keys(state.attendance).forEach(subjectId => {
+  // Loop through all attendance logs in DB for enrolled subjects
+  enrolledSubjectKeys.forEach(subjectId => {
     const datesNode = state.attendance[subjectId];
-    Object.keys(datesNode).forEach(dateStr => {
-      const records = datesNode[dateStr];
-      if (records[studentUid]) {
-        const record = records[studentUid];
-        if (record.status === 'Present') {
-          totalPresent++;
-        } else if (record.status === 'Absent') {
-          totalAbsent++;
+    if (datesNode) {
+      Object.keys(datesNode).forEach(dateStr => {
+        const records = datesNode[dateStr];
+        if (records[studentUid]) {
+          const record = records[studentUid];
+          if (record.status === 'Present') {
+            totalPresent++;
+          } else if (record.status === 'Absent') {
+            totalAbsent++;
+          }
         }
-      }
-    });
+      });
+    }
   });
 
   const totalClasses = totalPresent + totalAbsent;
@@ -952,7 +1050,7 @@ function handleTeacherSubjectChange() {
   if (subject) {
     el.sessionInfoTime.textContent = `${subject.timeStart} - ${subject.timeEnd}`;
     el.sessionInfoRoom.textContent = subject.room;
-    el.sessionInfoDay.textContent = subject.day;
+    el.sessionInfoDay.textContent = subject.scheduledDays ? subject.scheduledDays.join(', ') : subject.day;
     el.teacherSessionInfo.style.display = 'block';
     el.btnToggleCamera.disabled = false;
     
@@ -1343,11 +1441,12 @@ function renderAdminSubjectsTable() {
 
   list.forEach(subject => {
     const tr = document.createElement('tr');
+    const displayDays = subject.scheduledDays ? subject.scheduledDays.join(', ') : subject.day;
     tr.innerHTML = `
       <td><strong>${subject.code}</strong></td>
       <td>${subject.name}</td>
       <td>${subject.teacherName}</td>
-      <td>${subject.day} ${subject.timeStart}-${subject.timeEnd}</td>
+      <td>${displayDays} • ${subject.timeStart}-${subject.timeEnd}</td>
       <td>${subject.room}</td>
       <td>
         <button class="btn-icon btn-icon-danger" title="Delete Subject" data-action="delete" data-id="${subject.id}">
@@ -1462,13 +1561,17 @@ async function handleAddSubject() {
   const code = document.getElementById('subject-code').value.trim();
   const name = document.getElementById('subject-name').value.trim();
   const teacherId = el.subjectTeacherSelect.value;
-  const day = document.getElementById('subject-day').value;
+  
+  // Read multi-day checkboxes
+  const dayCheckboxes = document.querySelectorAll('.day-checkbox:checked');
+  const scheduledDays = Array.from(dayCheckboxes).map(cb => cb.value);
+  
   const room = document.getElementById('subject-room').value.trim();
   const timeStart = document.getElementById('subject-time-start').value;
   const timeEnd = document.getElementById('subject-time-end').value;
 
-  if (!code || !name || !teacherId || !day || !room || !timeStart || !timeEnd) {
-    showToast("Please fill all subject configuration fields.", "error");
+  if (!code || !name || !teacherId || scheduledDays.length === 0 || !room || !timeStart || !timeEnd) {
+    showToast("Please fill all subject configuration fields, and select at least one day.", "error");
     return;
   }
 
@@ -1484,7 +1587,8 @@ async function handleAddSubject() {
     name: name,
     teacherId: teacherId,
     teacherName: teacher.name,
-    day: day,
+    day: scheduledDays[0], // Keep for backward compatibility with code expecting a single string
+    scheduledDays: scheduledDays,
     room: room,
     timeStart: timeStart,
     timeEnd: timeEnd
@@ -1638,23 +1742,35 @@ function mapStudentDayData(cellEl, indicatorsEl, cellDateStr, weekdayName) {
   let hasSchedule = false;
   let attendanceRecord = null;
   let scheduledSubjects = [];
+  const studentUid = state.studentProfile ? state.studentProfile.uid : null;
 
-  // Check if student has class schedules on this day
+  if (!studentUid) return;
+
+  // Check if student has class schedules on this day for enrolled subjects
   Object.values(state.subjects).forEach(subject => {
-    if (subject.day === weekdayName) {
-      hasSchedule = true;
-      scheduledSubjects.push(subject);
+    const isEnrolled = state.subjectEnrollments && 
+                       state.subjectEnrollments[subject.id] && 
+                       state.subjectEnrollments[subject.id][studentUid];
+    
+    if (isEnrolled) {
+      const days = subject.scheduledDays || [subject.day];
+      if (days.includes(weekdayName)) {
+        hasSchedule = true;
+        scheduledSubjects.push(subject);
+      }
     }
   });
 
   // Check if student has attendance record for this day
   Object.keys(state.attendance).forEach(subjectId => {
-    const dateRecordNode = state.attendance[subjectId][cellDateStr];
-    const studentUid = state.studentProfile.uid;
-    if (dateRecordNode && dateRecordNode[studentUid]) {
-      attendanceRecord = dateRecordNode[studentUid];
-      // Attach subject details to attendance record for modal popup
-      attendanceRecord.subject = state.subjects[subjectId];
+    const datesNode = state.attendance[subjectId];
+    if (datesNode && datesNode[cellDateStr]) {
+      const dateRecordNode = datesNode[cellDateStr];
+      if (dateRecordNode[studentUid]) {
+        attendanceRecord = dateRecordNode[studentUid];
+        // Attach subject details to attendance record for modal popup
+        attendanceRecord.subject = state.subjects[subjectId];
+      }
     }
   });
 
@@ -1688,11 +1804,16 @@ function mapTeacherDayData(cellEl, indicatorsEl, cellDateStr, weekdayName) {
   let hasSchedule = false;
   let teachingSubjects = [];
 
+  if (!state.teacherProfile) return;
+
   // Check if teacher has teaching schedule on this weekday
   Object.values(state.subjects).forEach(subject => {
-    if (subject.teacherId === state.teacherProfile.uid && subject.day === weekdayName) {
-      hasSchedule = true;
-      teachingSubjects.push(subject);
+    if (subject.teacherId === state.teacherProfile.uid) {
+      const days = subject.scheduledDays || [subject.day];
+      if (days.includes(weekdayName)) {
+        hasSchedule = true;
+        teachingSubjects.push(subject);
+      }
     }
   });
 
@@ -1802,6 +1923,280 @@ function openDayDetailsModal(dateStr, schedules, attendance, role) {
 
   toggleModal(el.modalDayDetails, true);
   lucide.createIcons();
+}
+
+// ================= TEACHER JOIN QR & STUDENT JOIN SCANNER IMPLEMENTATION =================
+
+function openTeacherJoinQrModal() {
+  if (!state.teacherProfile) return;
+  
+  // Populate the select dropdown with teacher's subjects
+  const select = el.teacherJoinQrSelect;
+  select.innerHTML = '<option value="">-- Choose Subject --</option>';
+  
+  let firstSubjectId = "";
+  Object.values(state.subjects).forEach(subject => {
+    if (subject.teacherId === state.teacherProfile.uid) {
+      const option = document.createElement('option');
+      option.value = subject.id;
+      option.textContent = `${subject.code} - ${subject.name}`;
+      select.appendChild(option);
+      if (!firstSubjectId) firstSubjectId = subject.id;
+    }
+  });
+
+  // Select first subject by default if available
+  if (firstSubjectId) {
+    select.value = firstSubjectId;
+    state.activeJoinSubjectId = firstSubjectId;
+    el.teacherJoinQrSubjectName.textContent = state.subjects[firstSubjectId].name;
+    generateTeacherJoinQr();
+    startTeacherJoinQrGenerator();
+  } else {
+    state.activeJoinSubjectId = null;
+    el.teacherJoinQrSubjectName.textContent = "No subjects assigned";
+    // Clear canvas
+    const canvas = el.teacherJoinQrCanvas;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+
+  toggleModal(el.modalTeacherJoinQr, true);
+}
+
+function closeTeacherJoinQrModal() {
+  stopTeacherJoinQrGenerator();
+  toggleModal(el.modalTeacherJoinQr, false);
+}
+
+function handleTeacherJoinQrSubjectChange(subjectId) {
+  state.activeJoinSubjectId = subjectId;
+  if (subjectId && state.subjects[subjectId]) {
+    el.teacherJoinQrSubjectName.textContent = state.subjects[subjectId].name;
+    generateTeacherJoinQr();
+    startTeacherJoinQrGenerator();
+  } else {
+    el.teacherJoinQrSubjectName.textContent = "Select a subject";
+    stopTeacherJoinQrGenerator();
+    const canvas = el.teacherJoinQrCanvas;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+}
+
+async function generateTeacherJoinQr() {
+  const subjectId = state.activeJoinSubjectId;
+  if (!subjectId || !state.subjects[subjectId]) return;
+
+  const subject = state.subjects[subjectId];
+  const now = new Date();
+  
+  // Generate a random 6-character One-Time Password (OTP) for joining
+  const otp = Math.random().toString(36).substring(2, 8).toUpperCase();
+  
+  // Write OTP to DB join_tokens node
+  try {
+    const tokenRef = ref(db, `join_tokens/${subjectId}`);
+    await set(tokenRef, {
+      otp: otp,
+      timestamp: serverTimestamp(),
+      subjectId: subjectId
+    });
+  } catch (err) {
+    console.error("Failed to write join token", err);
+  }
+
+  const payloadObj = {
+    type: "join",
+    subjectId: subjectId,
+    subjectCode: subject.code,
+    subjectName: subject.name,
+    teacherId: subject.teacherId,
+    timestamp: now.getTime(),
+    otp: otp
+  };
+
+  const payloadString = JSON.stringify(payloadObj);
+
+  if (typeof QRious !== 'undefined' && el.teacherJoinQrCanvas) {
+    new QRious({
+      element: el.teacherJoinQrCanvas,
+      value: payloadString,
+      size: 350,
+      background: '#ffffff',
+      foreground: '#0b0f19',
+      level: 'H'
+    });
+  } else {
+    console.error("QRious library not loaded or canvas missing.");
+  }
+}
+
+function startTeacherJoinQrGenerator() {
+  stopTeacherJoinQrGenerator();
+  
+  state.teacherJoinQrTimeRemaining = 30;
+  if (el.teacherJoinQrTimer) {
+    el.teacherJoinQrTimer.textContent = `${state.teacherJoinQrTimeRemaining}s`;
+  }
+
+  state.teacherJoinQrInterval = setInterval(() => {
+    state.teacherJoinQrTimeRemaining--;
+    
+    if (state.teacherJoinQrTimeRemaining <= 0) {
+      state.teacherJoinQrTimeRemaining = 30;
+      generateTeacherJoinQr();
+    }
+    
+    if (el.teacherJoinQrTimer) {
+      el.teacherJoinQrTimer.textContent = `${state.teacherJoinQrTimeRemaining}s`;
+    }
+  }, 1000);
+}
+
+function stopTeacherJoinQrGenerator() {
+  if (state.teacherJoinQrInterval) {
+    clearInterval(state.teacherJoinQrInterval);
+    state.teacherJoinQrInterval = null;
+  }
+}
+
+function openStudentJoinScanner() {
+  state.isStudentJoinCameraRunning = true;
+  if (el.studentJoinStatus) {
+    el.studentJoinStatus.textContent = "Camera Streaming...";
+    el.studentJoinStatus.style.color = "var(--status-success)";
+  }
+  toggleModal(el.modalStudentJoinScanner, true);
+
+  // Initialize html5-qrcode scanner for student join
+  state.studentJoinQrScanner = new Html5Qrcode("student-join-reader");
+  
+  const config = { 
+    fps: 15, 
+    qrbox: { width: 250, height: 250 },
+    aspectRatio: 1.0
+  };
+
+  state.studentJoinQrScanner.start(
+    { facingMode: "environment" },
+    config,
+    onStudentJoinQrSuccess,
+    onStudentJoinQrFailure
+  ).catch(err => {
+    console.error("Join Camera startup failed", err);
+    if (el.studentJoinStatus) {
+      el.studentJoinStatus.textContent = "Failed to open camera. Grant permissions.";
+      el.studentJoinStatus.style.color = "var(--status-error)";
+    }
+    stopStudentJoinScanner();
+  });
+}
+
+function stopStudentJoinScanner() {
+  state.isStudentJoinCameraRunning = false;
+  if (el.studentJoinStatus) {
+    el.studentJoinStatus.textContent = "Scanner Stopped";
+    el.studentJoinStatus.style.color = "var(--text-muted)";
+  }
+  
+  if (state.studentJoinQrScanner) {
+    state.studentJoinQrScanner.stop().then(() => {
+      state.studentJoinQrScanner = null;
+    }).catch(err => {
+      console.error("Error stopping student join scanner", err);
+      state.studentJoinQrScanner = null;
+    });
+  }
+}
+
+function closeStudentJoinScanner() {
+  stopStudentJoinScanner();
+  toggleModal(el.modalStudentJoinScanner, false);
+}
+
+function onStudentJoinQrSuccess(decodedText) {
+  try {
+    const qrData = JSON.parse(decodedText);
+    if (qrData.type === 'join') {
+      validateAndEnrollSubject(qrData);
+    } else {
+      showToast("This is not a subject Join QR code.", "error");
+    }
+  } catch (error) {
+    showToast("Invalid QR Code format.", "error");
+  }
+}
+
+function onStudentJoinQrFailure(error) {
+  // Silence verbose scanning noise
+}
+
+async function validateAndEnrollSubject(qrData) {
+  const studentUid = state.studentProfile ? state.studentProfile.uid : null;
+  const subjectId = qrData.subjectId;
+  const now = new Date();
+
+  if (!studentUid || !qrData.subjectId || !qrData.otp || !qrData.timestamp) {
+    showToast("Malformed Join QR code.", "error");
+    return;
+  }
+
+  // Verify OTP matches the database join_token
+  try {
+    // Temporarily stop scanner to prevent multiple scans
+    stopStudentJoinScanner();
+
+    const tokenRef = ref(db, `join_tokens/${subjectId}`);
+    const snapshot = await get(tokenRef);
+
+    if (!snapshot.exists()) {
+      playSound('error');
+      showToast("Join QR code has expired or is invalid.", "error");
+      openStudentJoinScanner();
+      return;
+    }
+
+    const tokenData = snapshot.val();
+
+    if (tokenData.otp !== qrData.otp) {
+      playSound('error');
+      showToast("Verification failed. Please scan a live QR code.", "error");
+      openStudentJoinScanner();
+      return;
+    }
+
+    // Verify token age (must be within 30 seconds)
+    const tokenTime = new Date(tokenData.timestamp);
+    const timeDiff = (now.getTime() - tokenTime.getTime()) / 1000;
+    if (Math.abs(timeDiff) > 30) {
+      playSound('error');
+      showToast("QR code expired. Please ask teacher to refresh.", "error");
+      openStudentJoinScanner();
+      return;
+    }
+
+    // Write enrollment to Realtime Database
+    const enrollRef = ref(db, `subject_enrollments/${subjectId}/${studentUid}`);
+    await set(enrollRef, {
+      joinedAt: serverTimestamp(),
+      studentName: `${state.studentProfile.firstName} ${state.studentProfile.lastName}`,
+      studentIdNumber: state.studentProfile.studentIdNumber || 'N/A'
+    });
+
+    playSound('success');
+    showToast(`Successfully joined subject: ${qrData.subjectName || qrData.subjectCode}!`);
+    toggleModal(el.modalStudentJoinScanner, false);
+  } catch (err) {
+    console.error("Error during student subject enrollment", err);
+    playSound('error');
+    showToast("Failed to join subject. Database error.", "error");
+    openStudentJoinScanner();
+  }
 }
 
 // ================= UTILITIES & HELPERS =================
