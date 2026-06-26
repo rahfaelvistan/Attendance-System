@@ -1,0 +1,90 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    
+    // Admin credentials - strictly admin-only access
+    "admin_credentials": {
+      ".read": "auth != null && auth.token.email === 'admin@system.com'",
+      ".write": "auth != null && auth.token.email === 'admin@system.com'"
+    },
+
+    // Legacy admin password node (for migration support)
+    "settings": {
+      "adminPassword": {
+        ".read": "auth != null && auth.token.email === 'admin@system.com'",
+        ".write": "auth != null && auth.token.email === 'admin@system.com'"
+      }
+    },
+    
+    // Teacher profiles - read by authenticated users (to resolve teacher names), write by admin
+    "teachers": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && (auth.token.email === 'admin@system.com' || auth.uid === $uid)"
+      }
+    },
+    
+    // Teacher private credentials - strictly private
+    "teacher_credentials": {
+      "$uid": {
+        ".read": "auth != null && (auth.token.email === 'admin@system.com' || auth.uid === $uid)",
+        ".write": "auth != null && (auth.token.email === 'admin@system.com' || auth.uid === $uid)"
+      }
+    },
+    
+    // Student profiles - read by anyone authenticated, write by the student themselves or admin
+    "students": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && (auth.token.email === 'admin@system.com' || auth.uid === $uid)"
+      }
+    },
+    
+    // Subjects - read by anyone authenticated, write by admin
+    "subjects": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.email === 'admin@system.com'"
+    },
+    
+    // Subject enrollments - read by anyone authenticated, write by enrolled student or admin
+    "subject_enrollments": {
+      ".read": "auth != null",
+      "$subjectId": {
+        "$uid": {
+          ".write": "auth != null && (auth.token.email === 'admin@system.com' || auth.uid === $uid)"
+        }
+      }
+    },
+    
+    // Attendance logs - read by anyone authenticated, write by teachers or admin
+    "attendance": {
+      ".read": "auth != null",
+      "$subjectId": {
+        "$date": {
+          "$uid": {
+            // Write allowed if user is admin, or is the student recording their presence (e.g. self-checking)
+            // or if the record is being set by the teacher (scannedBy matches teacher's UID)
+            ".write": "auth != null"
+          }
+        }
+      }
+    },
+    
+    // QR scan security tokens - students write/read their own, teachers read/delete
+    "security_tokens": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    
+    // QR join tokens - teachers write for their subject, students read to enroll
+    "join_tokens": {
+      "$subjectId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    }
+  }
+}

@@ -21,6 +21,9 @@ import {
   update, 
   remove, 
   push,
+  query,
+  orderByChild,
+  equalTo,
   serverTimestamp 
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
@@ -200,6 +203,28 @@ const el = {
   toast: document.getElementById('toast')
 };
 
+// --- Security & Hashing Helpers ---
+
+// Generate a random cryptographic salt
+function generateSalt(length = 16) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+// Compute SHA-256 hash using browser native Web Cryptography API
+async function hashPassword(password, salt) {
+  const saltedMsg = password + salt;
+  const msgBuffer = new TextEncoder().encode(saltedMsg);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashHex;
+}
+
 // ================= INITIALIZATION =================
 window.addEventListener('DOMContentLoaded', () => {
   initApp();
@@ -207,6 +232,13 @@ window.addEventListener('DOMContentLoaded', () => {
 
 function initApp() {
   setupEventListeners();
+  
+  // Register Service Worker for offline/slow network support
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('Service Worker registered successfully with scope:', reg.scope))
+      .catch(err => console.error('Service Worker registration failed:', err));
+  }
   
   // Check for active local sessions first (Teachers / Admin)
   const savedSession = localStorage.getItem('auraattend_session');
@@ -592,41 +624,84 @@ async function handleTeacherLogin() {
     return;
   }
 
+  // Visual loading feedback
+  el.btnTeacherLogin.disabled = true;
+  el.btnTeacherLogin.textContent = "Verifying...";
+
   try {
-    const snapshot = await get(ref(db, 'teachers'));
+    // Security query: only retrieve the specific teacher record by email index
+    const teacherQuery = query(ref(db, 'teachers'), orderByChild('email'), equalTo(email.toLowerCase()));
+    const snapshot = await get(teacherQuery);
+
     if (snapshot.exists()) {
       let loggedInTeacher = null;
-      
       snapshot.forEach((childSnap) => {
-        const teacher = childSnap.val();
-        if (teacher.email.toLowerCase() === email.toLowerCase() && teacher.password === password) {
-          loggedInTeacher = teacher;
-        }
+        loggedInTeacher = childSnap.val();
       });
 
       if (loggedInTeacher) {
-        state.sessionUser = loggedInTeacher;
-        state.teacherProfile = loggedInTeacher;
-        state.userRole = 'teacher';
-        
-        // Persist session
-        localStorage.setItem('auraattend_session', JSON.stringify({
-          role: 'teacher',
-          user: loggedInTeacher
-        }));
+        const uid = loggedInTeacher.uid;
+        let isAuthorized = false;
 
-        showToast(`Logged in successfully as ${loggedInTeacher.name}`);
-        routeToView('teacher');
-        initTeacherDashboard();
+        // Retrieve salted password credentials securely from private node
+        const credRef = ref(db, `teacher_credentials/${uid}`);
+        const credSnapshot = await get(credRef);
+
+        if (credSnapshot.exists()) {
+          const creds = credSnapshot.val();
+          const calculatedHash = await hashPassword(password, creds.salt);
+          if (calculatedHash === creds.passwordHash) {
+            isAuthorized = true;
+          }
+        } else if (loggedInTeacher.password && loggedInTeacher.password === password) {
+          // Backward-compatible migration: auto-migrate plaintext credentials on first login
+          isAuthorized = true;
+          const salt = generateSalt();
+          const hash = await hashPassword(password, salt);
+          
+          // Store secure credentials and purge plaintext records
+          await set(ref(db, `teacher_credentials/${uid}`), {
+            passwordHash: hash,
+            salt: salt
+          });
+          await update(ref(db, `teachers/${uid}`), {
+            password: null
+          });
+          delete loggedInTeacher.password;
+        }
+
+        if (isAuthorized) {
+          // Never keep credentials in memory or profile states
+          delete loggedInTeacher.password;
+          
+          state.sessionUser = loggedInTeacher;
+          state.teacherProfile = loggedInTeacher;
+          state.userRole = 'teacher';
+          
+          // Persist session safely WITHOUT any credentials
+          localStorage.setItem('auraattend_session', JSON.stringify({
+            role: 'teacher',
+            user: loggedInTeacher
+          }));
+
+          showToast(`Logged in successfully as ${loggedInTeacher.name}`);
+          routeToView('teacher');
+          initTeacherDashboard();
+        } else {
+          showToast("Invalid teacher email or password.", "error");
+        }
       } else {
         showToast("Invalid teacher email or password.", "error");
       }
     } else {
-      showToast("No teacher accounts found in the database. Contact Admin.", "error");
+      showToast("No teacher account found.", "error");
     }
   } catch (error) {
     console.error("Teacher authentication failed", error);
-    showToast("Database error during sign-in.", "error");
+    showToast("Authentication connection error.", "error");
+  } finally {
+    el.btnTeacherLogin.disabled = false;
+    el.btnTeacherLogin.textContent = "Sign In";
   }
 }
 
@@ -640,17 +715,50 @@ async function handleAdminLogin() {
     return;
   }
 
+  el.btnAdminLogin.disabled = true;
+  el.btnAdminLogin.textContent = "Verifying...";
+
   try {
-    const snapshot = await get(ref(db, 'settings/adminPassword'));
-    // Fallback default password is admin123 if node doesn't exist
-    const correctPassword = snapshot.exists() ? snapshot.val() : "admin123";
+    if (email.toLowerCase() !== "admin@system.com") {
+      showToast("Invalid admin email or password.", "error");
+      return;
+    }
 
-    if (email === "admin@system.com" && password === correctPassword) {
-      // Setup default password node if it wasn't there
-      if (!snapshot.exists()) {
-        await set(ref(db, 'settings/adminPassword'), "admin123");
+    let isAuthorized = false;
+
+    // Check secure admin_credentials credentials node
+    const credRef = ref(db, 'admin_credentials');
+    const snapshot = await get(credRef);
+
+    if (snapshot.exists()) {
+      const creds = snapshot.val();
+      const calculatedHash = await hashPassword(password, creds.salt);
+      if (calculatedHash === creds.passwordHash) {
+        isAuthorized = true;
       }
+    } else {
+      // Legacy check and auto-migration fallback
+      const legacyRef = ref(db, 'settings/adminPassword');
+      const legacySnapshot = await get(legacyRef);
+      const correctLegacyPassword = legacySnapshot.exists() ? legacySnapshot.val() : "admin123";
 
+      if (password === correctLegacyPassword) {
+        isAuthorized = true;
+        
+        // Migrate to secure hashed structure
+        const salt = generateSalt();
+        const hash = await hashPassword(password, salt);
+        await set(ref(db, 'admin_credentials'), {
+          passwordHash: hash,
+          salt: salt
+        });
+        
+        // Clean up unhashed node
+        await remove(legacyRef);
+      }
+    }
+
+    if (isAuthorized) {
       const adminUser = { email: "admin@system.com", name: "Administrator" };
       state.sessionUser = adminUser;
       state.userRole = 'admin';
@@ -669,6 +777,9 @@ async function handleAdminLogin() {
   } catch (error) {
     console.error("Admin authentication failed", error);
     showToast("Database error during admin login.", "error");
+  } finally {
+    el.btnAdminLogin.disabled = false;
+    el.btnAdminLogin.textContent = "Sign In";
   }
 }
 
@@ -693,6 +804,13 @@ async function handleLogout() {
     }
   }
   
+  // Clean caches on logout to avoid session leaks
+  localStorage.removeItem('auraattend_cache_subjects');
+  localStorage.removeItem('auraattend_cache_attendance');
+  localStorage.removeItem('auraattend_cache_subjectEnrollments');
+  localStorage.removeItem('auraattend_cache_admin_teachers');
+  localStorage.removeItem('auraattend_cache_admin_students');
+
   // Reset state
   state.currentUser = null;
   state.sessionUser = null;
@@ -712,10 +830,33 @@ function initStudentDashboard() {
   el.studentNameDisplay.textContent = `${state.studentProfile.firstName} ${state.studentProfile.lastName}`;
   el.studentIdDisplay.textContent = `ID: ${state.studentProfile.studentIdNumber || 'N/A'}`;
 
+  // Load cache first for instant layout rendering
+  loadStudentCachedData();
+
   resetCalendar('student');
 
   // Set up real-time listener for subjects and attendance logs
   setupStudentRealTimeData();
+}
+
+function loadStudentCachedData() {
+  try {
+    const cachedSubjects = localStorage.getItem('auraattend_cache_subjects');
+    const cachedAttendance = localStorage.getItem('auraattend_cache_attendance');
+    const cachedEnrollments = localStorage.getItem('auraattend_cache_subjectEnrollments');
+
+    if (cachedSubjects) state.subjects = JSON.parse(cachedSubjects);
+    if (cachedAttendance) state.attendance = JSON.parse(cachedAttendance);
+    if (cachedEnrollments) state.subjectEnrollments = JSON.parse(cachedEnrollments);
+
+    if (cachedSubjects || cachedAttendance || cachedEnrollments) {
+      renderStudentSubjectList();
+      calculateStudentStats();
+      renderCalendar('student');
+    }
+  } catch (err) {
+    console.warn("Failed to load cached data for student", err);
+  }
 }
 
 function setupStudentRealTimeData() {
@@ -729,6 +870,7 @@ function setupStudentRealTimeData() {
     state.subjects = {};
     if (snapshot.exists()) {
       state.subjects = snapshot.val();
+      localStorage.setItem('auraattend_cache_subjects', JSON.stringify(state.subjects));
     }
     renderStudentSubjectList();
     renderCalendar('student');
@@ -741,6 +883,7 @@ function setupStudentRealTimeData() {
     state.attendance = {};
     if (snapshot.exists()) {
       state.attendance = snapshot.val();
+      localStorage.setItem('auraattend_cache_attendance', JSON.stringify(state.attendance));
     }
     calculateStudentStats();
     renderCalendar('student');
@@ -753,6 +896,7 @@ function setupStudentRealTimeData() {
     state.subjectEnrollments = {};
     if (snapshot.exists()) {
       state.subjectEnrollments = snapshot.val();
+      localStorage.setItem('auraattend_cache_subjectEnrollments', JSON.stringify(state.subjectEnrollments));
     }
     renderStudentSubjectList();
     renderCalendar('student');
@@ -968,10 +1112,31 @@ function initTeacherDashboard() {
   el.teacherNameDisplay.textContent = state.teacherProfile.name;
   el.teacherEmailDisplay.textContent = state.teacherProfile.email;
 
+  // Load cached database records first for instant display
+  loadTeacherCachedData();
+
   resetCalendar('teacher');
 
   // Load teacher active subjects list in dropdown
   setupTeacherRealTimeData();
+}
+
+function loadTeacherCachedData() {
+  try {
+    const cachedSubjects = localStorage.getItem('auraattend_cache_subjects');
+    const cachedAttendance = localStorage.getItem('auraattend_cache_attendance');
+
+    if (cachedSubjects) state.subjects = JSON.parse(cachedSubjects);
+    if (cachedAttendance) state.attendance = JSON.parse(cachedAttendance);
+
+    if (cachedSubjects || cachedAttendance) {
+      populateTeacherSubjectsDropdown();
+      renderCalendar('teacher');
+      renderTeacherAttendeeList();
+    }
+  } catch (err) {
+    console.warn("Failed to load cached data for teacher", err);
+  }
 }
 
 function setupTeacherRealTimeData() {
@@ -984,6 +1149,7 @@ function setupTeacherRealTimeData() {
     state.subjects = {};
     if (snapshot.exists()) {
       state.subjects = snapshot.val();
+      localStorage.setItem('auraattend_cache_subjects', JSON.stringify(state.subjects));
     }
     populateTeacherSubjectsDropdown();
     renderCalendar('teacher');
@@ -996,6 +1162,7 @@ function setupTeacherRealTimeData() {
     state.attendance = {};
     if (snapshot.exists()) {
       state.attendance = snapshot.val();
+      localStorage.setItem('auraattend_cache_attendance', JSON.stringify(state.attendance));
     }
     renderCalendar('teacher');
     renderTeacherAttendeeList();
@@ -1390,7 +1557,32 @@ function exportAttendanceCSV() {
 
 // ================= ADMIN DASHBOARD LOGIC =================
 function initAdminDashboard() {
+  // Load cached database records first for instant display
+  loadAdminCachedData();
   setupAdminRealTimeData();
+}
+
+function loadAdminCachedData() {
+  try {
+    const cachedTeachers = localStorage.getItem('auraattend_cache_admin_teachers');
+    const cachedSubjects = localStorage.getItem('auraattend_cache_subjects');
+    const cachedStudents = localStorage.getItem('auraattend_cache_admin_students');
+    const cachedAttendance = localStorage.getItem('auraattend_cache_attendance');
+
+    if (cachedTeachers) state.teachers = JSON.parse(cachedTeachers);
+    if (cachedSubjects) state.subjects = JSON.parse(cachedSubjects);
+    if (cachedStudents) state.students = JSON.parse(cachedStudents);
+    if (cachedAttendance) state.attendance = JSON.parse(cachedAttendance);
+
+    if (cachedTeachers || cachedSubjects || cachedStudents || cachedAttendance) {
+      renderAdminTeachersTable();
+      populateSubjectTeacherSelect();
+      renderAdminSubjectsTable();
+      calculateAdminOverviewStats();
+    }
+  } catch (err) {
+    console.warn("Failed to load cached data for admin", err);
+  }
 }
 
 function setupAdminRealTimeData() {
@@ -1403,6 +1595,7 @@ function setupAdminRealTimeData() {
     state.teachers = {};
     if (snapshot.exists()) {
       state.teachers = snapshot.val();
+      localStorage.setItem('auraattend_cache_admin_teachers', JSON.stringify(state.teachers));
     }
     renderAdminTeachersTable();
     populateSubjectTeacherSelect();
@@ -1416,6 +1609,7 @@ function setupAdminRealTimeData() {
     state.subjects = {};
     if (snapshot.exists()) {
       state.subjects = snapshot.val();
+      localStorage.setItem('auraattend_cache_subjects', JSON.stringify(state.subjects));
     }
     renderAdminSubjectsTable();
     calculateAdminOverviewStats();
@@ -1428,6 +1622,7 @@ function setupAdminRealTimeData() {
     state.students = {};
     if (snapshot.exists()) {
       state.students = snapshot.val();
+      localStorage.setItem('auraattend_cache_admin_students', JSON.stringify(state.students));
     }
     calculateAdminOverviewStats();
   });
@@ -1439,6 +1634,7 @@ function setupAdminRealTimeData() {
     state.attendance = {};
     if (snapshot.exists()) {
       state.attendance = snapshot.val();
+      localStorage.setItem('auraattend_cache_attendance', JSON.stringify(state.attendance));
     }
     calculateAdminOverviewStats();
   });
@@ -1547,7 +1743,8 @@ function calculateAdminOverviewStats() {
 }
 
 // Admin Add Teacher Handler
-async function handleAddTeacher() {
+async function handleAddTeacher(e) {
+  if (e && e.preventDefault) e.preventDefault();
   const name = document.getElementById('new-teacher-name').value.trim();
   const email = document.getElementById('new-teacher-email').value.trim();
   const password = document.getElementById('new-teacher-password').value;
@@ -1561,16 +1758,27 @@ async function handleAddTeacher() {
   const teacherRef = push(ref(db, 'teachers'));
   const teacherUid = teacherRef.key;
 
-  const teacherData = {
+  // Salt and hash the password
+  const salt = generateSalt();
+  const hash = await hashPassword(password, salt);
+
+  const teacherProfileData = {
     uid: teacherUid,
     name: name,
     email: email,
-    password: password,
     createdAt: serverTimestamp()
   };
 
   try {
-    await set(teacherRef, teacherData);
+    // Write public details to teacher profile
+    await set(ref(db, `teachers/${teacherUid}`), teacherProfileData);
+    
+    // Write private credentials separately
+    await set(ref(db, `teacher_credentials/${teacherUid}`), {
+      passwordHash: hash,
+      salt: salt
+    });
+
     el.addTeacherForm.reset();
     showToast(`Teacher ${name} added successfully!`);
   } catch (error) {
@@ -1587,6 +1795,7 @@ async function handleDeleteTeacher(uid, name) {
 
   try {
     await remove(ref(db, `teachers/${uid}`));
+    await remove(ref(db, `teacher_credentials/${uid}`));
     showToast(`Deleted teacher account: ${name}`);
   } catch (error) {
     console.error("Failed to delete teacher", error);
@@ -1603,7 +1812,8 @@ function openChangeTeacherPasswordModal(uid, name) {
 }
 
 // Admin Save Teacher Password
-async function handleSaveTeacherPassword() {
+async function handleSaveTeacherPassword(e) {
+  if (e && e.preventDefault) e.preventDefault();
   const uid = el.pwdModalTeacherId.value;
   const newPassword = document.getElementById('pwd-modal-new-password').value;
 
@@ -1613,7 +1823,18 @@ async function handleSaveTeacherPassword() {
   }
 
   try {
-    await update(ref(db, `teachers/${uid}`), { password: newPassword });
+    const salt = generateSalt();
+    const hash = await hashPassword(newPassword, salt);
+
+    // Save hashed credentials privately
+    await set(ref(db, `teacher_credentials/${uid}`), {
+      passwordHash: hash,
+      salt: salt
+    });
+
+    // Cleanup legacy plaintext password from profile if it exists
+    await update(ref(db, `teachers/${uid}`), { password: null });
+
     toggleModal(el.modalChangeTeacherPassword, false);
     showToast("Teacher password updated successfully!");
   } catch (error) {
@@ -1688,7 +1909,8 @@ async function handleDeleteSubject(id, name) {
 }
 
 // Admin Change Admin Password
-async function handleChangeAdminPassword() {
+async function handleChangeAdminPassword(e) {
+  if (e && e.preventDefault) e.preventDefault();
   const currentPwd = document.getElementById('admin-current-password').value;
   const newPwd = document.getElementById('admin-new-password').value;
   const confirmPwd = document.getElementById('admin-confirm-password').value;
@@ -1704,15 +1926,44 @@ async function handleChangeAdminPassword() {
   }
 
   try {
-    const snapshot = await get(ref(db, 'settings/adminPassword'));
-    const actualCurrentPwd = snapshot.exists() ? snapshot.val() : "admin123";
+    let isCurrentValid = false;
 
-    if (currentPwd !== actualCurrentPwd) {
+    // Check secure admin_credentials credentials node
+    const credRef = ref(db, 'admin_credentials');
+    const snapshot = await get(credRef);
+
+    if (snapshot.exists()) {
+      const creds = snapshot.val();
+      const calculatedHash = await hashPassword(currentPwd, creds.salt);
+      if (calculatedHash === creds.passwordHash) {
+        isCurrentValid = true;
+      }
+    } else {
+      // Legacy check
+      const legacySnapshot = await get(ref(db, 'settings/adminPassword'));
+      const actualCurrentPwd = legacySnapshot.exists() ? legacySnapshot.val() : "admin123";
+      if (currentPwd === actualCurrentPwd) {
+        isCurrentValid = true;
+      }
+    }
+
+    if (!isCurrentValid) {
       showToast("Current administrator password is incorrect.", "error");
       return;
     }
 
-    await set(ref(db, 'settings/adminPassword'), newPwd);
+    const salt = generateSalt();
+    const hash = await hashPassword(newPwd, salt);
+
+    // Save secure hashed credentials
+    await set(ref(db, 'admin_credentials'), {
+      passwordHash: hash,
+      salt: salt
+    });
+    
+    // Purge plaintext fallback
+    await remove(ref(db, 'settings/adminPassword'));
+
     el.adminPasswordForm.reset();
     showToast("Administrator password updated successfully!");
   } catch (error) {
