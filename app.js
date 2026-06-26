@@ -59,6 +59,7 @@ let state = {
   activeTeacherSubject: null,
   html5QrScanner: null,
   isCameraRunning: false,
+  isScanThrottled: false, // Throttling state for teacher QR code scanner
   scannedAttendees: [],   // Log of scanned students today
   
   // Calendar Navigation
@@ -848,17 +849,12 @@ async function generateSecureQR() {
     console.error("Failed to write security token", err);
   }
 
-  // Formulate the secure payload containing the OTP
+  // Formulate a compact secure payload containing only essential references
   const payloadObj = {
-    uid: state.studentProfile.uid,
-    name: `${state.studentProfile.firstName} ${state.studentProfile.middleName ? state.studentProfile.middleName + ' ' : ''}${state.studentProfile.lastName}`,
-    studentIdNo: state.studentProfile.studentIdNumber || "N/A",
-    subjectId: subject.id,
-    subjectName: subject.name,
-    teacherId: subject.teacherId,
-    timestamp: now.getTime(),
-    date: dateStr,
-    otp: otp // Add OTP to prevent screenshots and token replays
+    u: state.studentProfile.uid,
+    s: subject.id,
+    t: now.getTime(),
+    o: otp
   };
 
   const payloadString = JSON.stringify(payloadObj);
@@ -868,20 +864,20 @@ async function generateSecureQR() {
     new QRious({
       element: el.studentQrCanvas,
       value: payloadString,
-      size: 350, // Higher resolution for crisp fullscreen viewing on Android
+      size: 350,
       background: '#ffffff',
       foreground: '#0b0f19',
-      level: 'H'
+      level: 'M'
     });
 
     // Draw on the top-level fullscreen modal canvas too
     new QRious({
       element: el.fullscreenQrCanvas,
       value: payloadString,
-      size: 600, // HD resolution for fullscreen scan
+      size: 600,
       background: '#ffffff',
       foreground: '#0b0f19',
-      level: 'H'
+      level: 'M'
     });
   } else {
     console.error("QRious library not loaded.");
@@ -1138,9 +1134,19 @@ function startScanner() {
   // Initialize html5-qrcode scanner
   state.html5QrScanner = new Html5Qrcode("qr-reader");
   
+  // Dynamic responsive qrbox sizing function
+  const qrboxFunction = (viewfinderWidth, viewfinderHeight) => {
+    const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+    const qrboxSize = Math.floor(minEdge * 0.7);
+    return {
+      width: qrboxSize,
+      height: qrboxSize
+    };
+  };
+
   const config = { 
     fps: 15, 
-    qrbox: { width: 250, height: 250 },
+    qrbox: qrboxFunction,
     aspectRatio: 1.0
   };
 
@@ -1158,6 +1164,7 @@ function startScanner() {
 
 function stopScanner() {
   state.isCameraRunning = false;
+  state.isScanThrottled = false; // Reset throttling when camera stops
   el.btnToggleCamera.innerHTML = '<i data-lucide="camera"></i> <span>Start Camera</span>';
   el.btnToggleCamera.className = 'btn btn-secondary';
   el.scannerLaser.style.display = 'none';
@@ -1178,8 +1185,46 @@ function stopScanner() {
 
 // Callback when QR is successfully read from camera stream
 function onQrCodeSuccess(decodedText) {
+  if (state.isScanThrottled) return;
+
   try {
     const qrData = JSON.parse(decodedText);
+    
+    // Quick validation of shape
+    const uid = qrData.u || qrData.uid;
+    const subjectId = qrData.s || qrData.subjectId;
+    const timestamp = qrData.t || qrData.timestamp;
+    const otp = qrData.o || qrData.otp;
+    
+    if (!uid || !subjectId || !timestamp || !otp) {
+      handleScanFeedback(false, "Malformed or insecure QR code.");
+      return;
+    }
+
+    // Trigger 5-second scanner throttle lock
+    state.isScanThrottled = true;
+    let countdown = 5;
+    el.scannerStatusText.textContent = `Cooldown: Next scan in ${countdown}s...`;
+    el.scannerStatusText.style.color = "var(--status-warning)";
+
+    const timerId = setInterval(() => {
+      countdown--;
+      if (countdown <= 0) {
+        clearInterval(timerId);
+        state.isScanThrottled = false;
+        if (state.isCameraRunning) {
+          el.scannerStatusText.textContent = "Camera Streaming...";
+          el.scannerStatusText.style.color = "var(--status-success)";
+        }
+      } else {
+        if (state.isCameraRunning) {
+          el.scannerStatusText.textContent = `Cooldown: Next scan in ${countdown}s...`;
+        } else {
+          clearInterval(timerId);
+        }
+      }
+    }, 1000);
+
     validateAndRecordAttendance(qrData);
   } catch (error) {
     handleScanFeedback(false, "Invalid QR Code format. Scan failed.");
@@ -1197,21 +1242,32 @@ async function validateAndRecordAttendance(qrData) {
   const now = new Date();
   const todayStr = getFormattedDateString(now);
 
+  const uid = qrData.u || qrData.uid;
+  const subjectId = qrData.s || qrData.subjectId;
+  const timestamp = qrData.t || qrData.timestamp;
+  const otp = qrData.o || qrData.otp;
+
   // 1. Structural Validation
-  if (!qrData.uid || !qrData.subjectId || !qrData.teacherId || !qrData.timestamp || !qrData.otp) {
+  if (!uid || !subjectId || !timestamp || !otp) {
     handleScanFeedback(false, "Malformed or insecure QR code.");
     return;
   }
 
-  // 2. Teacher & Subject Match check: "scanned correct if subject and teacher match"
-  if (qrData.teacherId !== currentTeacherId || qrData.subjectId !== currentSubjectId) {
-    handleScanFeedback(false, "Subject/Teacher Mismatch. Code is for another class.");
+  // 2. Subject Match check
+  if (subjectId !== currentSubjectId) {
+    handleScanFeedback(false, "Subject Mismatch. Code is for another class.");
+    return;
+  }
+
+  // Optional legacy check for teacherId if present in QR code
+  if (qrData.teacherId && qrData.teacherId !== currentTeacherId) {
+    handleScanFeedback(false, "Teacher Mismatch. Code is for another class.");
     return;
   }
 
   // 3. Realtime Database OTP Token Verification
   try {
-    const tokenRef = ref(db, `security_tokens/${qrData.uid}`);
+    const tokenRef = ref(db, `security_tokens/${uid}`);
     const snapshot = await get(tokenRef);
     
     if (!snapshot.exists()) {
@@ -1222,7 +1278,7 @@ async function validateAndRecordAttendance(qrData) {
     const tokenData = snapshot.val();
     
     // Verify OTP matches the one written by student in database
-    if (tokenData.otp !== qrData.otp) {
+    if (tokenData.otp !== otp) {
       handleScanFeedback(false, "Security verification failed. Show live QR code.");
       return;
     }
@@ -1240,14 +1296,24 @@ async function validateAndRecordAttendance(qrData) {
       handleScanFeedback(false, "QR Code expired. Code is older than 30s.");
       return;
     }
+
+    // 4. Fetch student details dynamically from the database to prevent spoofing
+    const studentSnapshot = await get(ref(db, `students/${uid}`));
+    if (!studentSnapshot.exists()) {
+      handleScanFeedback(false, "Student account profile not found.");
+      return;
+    }
+    const studentProfile = studentSnapshot.val();
+    const studentName = `${studentProfile.firstName} ${studentProfile.lastName}`;
+    const studentIdNo = studentProfile.studentIdNumber || "N/A";
     
-    // 4. Record attendance in Realtime Database
-    const attendanceRef = ref(db, `attendance/${currentSubjectId}/${todayStr}/${qrData.uid}`);
+    // 5. Record attendance in Realtime Database
+    const attendanceRef = ref(db, `attendance/${currentSubjectId}/${todayStr}/${uid}`);
     
     const record = {
-      studentId: qrData.uid,
-      studentIdNumber: qrData.studentIdNo || "N/A",
-      name: qrData.name,
+      studentId: uid,
+      studentIdNumber: studentIdNo,
+      name: studentName,
       timestamp: serverTimestamp(),
       status: "Present",
       scannedBy: currentTeacherId
@@ -1255,10 +1321,10 @@ async function validateAndRecordAttendance(qrData) {
 
     await set(attendanceRef, record);
     
-    // 5. CONSUME THE OTP: Delete token immediately so it can never be scanned again!
+    // 6. CONSUME THE OTP: Delete token immediately so it can never be scanned again!
     await remove(tokenRef);
     
-    handleScanFeedback(true, `Checked In: ${qrData.name}!`);
+    handleScanFeedback(true, `Checked In: ${studentName}!`);
   } catch (err) {
     console.error("Attendance verification error", err);
     handleScanFeedback(false, "Security verification error.");
@@ -2011,13 +2077,10 @@ async function generateTeacherJoinQr() {
   }
 
   const payloadObj = {
-    type: "join",
-    subjectId: subjectId,
-    subjectCode: subject.code,
-    subjectName: subject.name,
-    teacherId: subject.teacherId,
-    timestamp: now.getTime(),
-    otp: otp
+    y: "join",
+    s: subjectId,
+    t: now.getTime(),
+    o: otp
   };
 
   const payloadString = JSON.stringify(payloadObj);
@@ -2029,7 +2092,7 @@ async function generateTeacherJoinQr() {
       size: 350,
       background: '#ffffff',
       foreground: '#0b0f19',
-      level: 'H'
+      level: 'M'
     });
   } else {
     console.error("QRious library not loaded or canvas missing.");
@@ -2076,9 +2139,19 @@ function openStudentJoinScanner() {
   // Initialize html5-qrcode scanner for student join
   state.studentJoinQrScanner = new Html5Qrcode("student-join-reader");
   
+  // Dynamic responsive qrbox sizing function
+  const qrboxFunction = (viewfinderWidth, viewfinderHeight) => {
+    const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+    const qrboxSize = Math.floor(minEdge * 0.7);
+    return {
+      width: qrboxSize,
+      height: qrboxSize
+    };
+  };
+
   const config = { 
     fps: 15, 
-    qrbox: { width: 250, height: 250 },
+    qrbox: qrboxFunction,
     aspectRatio: 1.0
   };
 
@@ -2122,7 +2195,8 @@ function closeStudentJoinScanner() {
 function onStudentJoinQrSuccess(decodedText) {
   try {
     const qrData = JSON.parse(decodedText);
-    if (qrData.type === 'join') {
+    const type = qrData.y || qrData.type;
+    if (type === 'join') {
       validateAndEnrollSubject(qrData);
     } else {
       showToast("This is not a subject Join QR code.", "error");
@@ -2138,10 +2212,12 @@ function onStudentJoinQrFailure(error) {
 
 async function validateAndEnrollSubject(qrData) {
   const studentUid = state.studentProfile ? state.studentProfile.uid : null;
-  const subjectId = qrData.subjectId;
+  const subjectId = qrData.s || qrData.subjectId;
+  const otp = qrData.o || qrData.otp;
+  const timestamp = qrData.t || qrData.timestamp;
   const now = new Date();
 
-  if (!studentUid || !qrData.subjectId || !qrData.otp || !qrData.timestamp) {
+  if (!studentUid || !subjectId || !otp || !timestamp) {
     showToast("Malformed Join QR code.", "error");
     return;
   }
@@ -2163,7 +2239,7 @@ async function validateAndEnrollSubject(qrData) {
 
     const tokenData = snapshot.val();
 
-    if (tokenData.otp !== qrData.otp) {
+    if (tokenData.otp !== otp) {
       playSound('error');
       showToast("Verification failed. Please scan a live QR code.", "error");
       openStudentJoinScanner();
@@ -2189,7 +2265,8 @@ async function validateAndEnrollSubject(qrData) {
     });
 
     playSound('success');
-    showToast(`Successfully joined subject: ${qrData.subjectName || qrData.subjectCode}!`);
+    const displaySubjectName = (state.subjects && state.subjects[subjectId]) ? state.subjects[subjectId].name : (qrData.subjectName || qrData.subjectCode || "Subject");
+    showToast(`Successfully joined subject: ${displaySubjectName}!`);
     toggleModal(el.modalStudentJoinScanner, false);
   } catch (err) {
     console.error("Error during student subject enrollment", err);
