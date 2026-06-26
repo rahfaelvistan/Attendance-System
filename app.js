@@ -110,6 +110,7 @@ const el = {
   btnCloseQr: document.getElementById('btn-close-qr'),
   qrSubjectTitle: document.getElementById('qr-subject-title'),
   studentQrCanvas: document.getElementById('student-qr-canvas'),
+  studentQrContainer: document.getElementById('student-qr-container'),
   qrTimerText: document.getElementById('qr-timer-text'),
   qrDetailId: document.getElementById('qr-detail-id'),
   qrDetailName: document.getElementById('qr-detail-name'),
@@ -305,11 +306,17 @@ function setupEventListeners() {
     if (state.studentProfile && state.studentProfile.uid) {
       remove(ref(db, `security_tokens/${state.studentProfile.uid}`));
     }
+    el.studentQrContainer.classList.remove('fullscreen');
     el.studentQrCard.style.display = 'none';
     state.activeStudentSubject = null;
     stopQrGenerator();
     // Unselect subjects list items
     document.querySelectorAll('.subject-item').forEach(item => item.classList.remove('active'));
+  });
+
+  // Toggle fullscreen on QR container click
+  el.studentQrContainer.addEventListener('click', () => {
+    el.studentQrContainer.classList.toggle('fullscreen');
   });
 
   // Student Calendar Navigation
@@ -736,6 +743,8 @@ function selectStudentSubject(subjectId) {
   el.qrDetailId.textContent = state.studentProfile.studentIdNumber || 'N/A';
   el.qrDetailName.textContent = `${state.studentProfile.firstName} ${state.studentProfile.lastName}`;
   
+  // Initialize with normal mode (not fullscreen)
+  el.studentQrContainer.classList.remove('fullscreen');
   el.studentQrCard.style.display = 'block';
 
   // Trigger QR Code generation
@@ -787,7 +796,7 @@ async function generateSecureQR() {
     new QRious({
       element: el.studentQrCanvas,
       value: payloadString,
-      size: 200,
+      size: 350, // Higher resolution for crisp fullscreen viewing on Android
       background: '#ffffff',
       foreground: '#0b0f19',
       level: 'H'

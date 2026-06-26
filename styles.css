@@ -1572,3 +1572,151 @@ body {
   width: 18px;
   height: 18px;
 }
+
+/* ================= ANDROID & MOBILE COMPATIBILITY OVERLAYS ================= */
+@media (max-width: 480px) {
+  .app-wrapper {
+    padding: 0.5rem;
+  }
+  
+  .dashboard-header {
+    padding: 0.75rem 1rem;
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: flex-start;
+  }
+  
+  .user-profile {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .stats-row {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .stats-card {
+    padding: 1rem;
+  }
+
+  .main-card {
+    padding: 1.25rem 1rem;
+  }
+
+  /* Calendar mobile optimization */
+  .calendar-days-header {
+    font-size: 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .calendar-days {
+    gap: 4px;
+  }
+
+  .calendar-day {
+    padding: 4px;
+    min-height: 44px;
+    border-radius: 6px;
+  }
+
+  .calendar-day-num {
+    font-size: 0.82rem;
+  }
+
+  .attendance-badge {
+    top: 3px;
+    right: 3px;
+    width: 13px;
+    height: 13px;
+  }
+
+  .attendance-badge i {
+    width: 8px;
+    height: 8px;
+  }
+  
+  /* Buttons touch target accessibility */
+  .btn, .role-tab, .admin-tab {
+    min-height: 48px;
+  }
+}
+
+/* ================= INTERACTIVE FULLSCREEN QR CODE ================= */
+.qr-container {
+  cursor: zoom-in;
+  transition: transform var(--transition-normal);
+  touch-action: manipulation; /* removes double-tap delay on mobile */
+  -webkit-tap-highlight-color: transparent; /* removes mobile tap highlight box */
+}
+
+.qr-container:hover {
+  transform: scale(1.02);
+}
+
+.qr-container.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #ffffff; /* pure white background is best for scanning */
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+  padding: 2rem;
+  margin: 0;
+  border-radius: 0;
+  animation: qrZoomIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes qrZoomIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.qr-container.fullscreen canvas {
+  width: min(80vw, 80vh) !important;
+  height: min(80vw, 80vh) !important;
+  max-width: 480px !important;
+  max-height: 480px !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-sm);
+}
+
+.qr-container.fullscreen .qr-timer {
+  bottom: 5rem;
+  width: 40px;
+  height: 40px;
+  font-size: 0.9rem;
+  border-color: #ffffff;
+}
+
+.qr-container.fullscreen::after {
+  content: 'Click anywhere to minimize';
+  position: absolute;
+  bottom: 2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 21, 38, 0.95);
+  color: #ffffff;
+  padding: 0.6rem 1.5rem;
+  border-radius: 50px;
+  font-size: 0.85rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+  pointer-events: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  letter-spacing: 0.5px;
+  animation: pulseText 2s infinite;
+}
+
+@keyframes pulseText {
+  0% { opacity: 0.8; }
+  50% { opacity: 1; transform: translate(-50%, -2px); }
+  100% { opacity: 0.8; }
+}
