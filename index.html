@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AuraAttend - Real-time QR Attendance System</title>
+  <link rel="stylesheet" href="styles.css">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- QR Code Generator CDN (QRious) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+  
+  <!-- HTML5 QR Code Scanner CDN (html5-qrcode) -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+
+  <!-- Background Glows -->
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+
+  <!-- Main Container -->
+  <div class="app-wrapper">
+
+    <!-- ================= AUTH VIEW ================= -->
+    <section id="view-auth" class="view-section">
+      <div class="auth-card glass-panel">
+        <div class="auth-logo">
+          <div class="logo-icon"><i data-lucide="qr-code"></i></div>
+          <h2>Aura<span>Attend</span></h2>
+          <p>Real-time QR Attendance Portal</p>
+        </div>
+
+        <!-- Role Selector Tabs -->
+        <div class="role-selector">
+          <button class="role-tab active" data-role="student">
+            <i data-lucide="graduation-cap"></i><span>Student</span>
+          </button>
+          <button class="role-tab" data-role="teacher">
+            <i data-lucide="briefcase"></i><span>Teacher</span>
+          </button>
+          <button class="role-tab" data-role="admin">
+            <i data-lucide="shield-check"></i><span>Admin</span>
+          </button>
+        </div>
+
+        <!-- Dynamic Auth Forms -->
+        <div class="auth-form-container">
+          
+          <!-- Student Login (Google Only) -->
+          <div id="form-student" class="auth-form active">
+            <p class="form-desc">Quickly register or sign in to your student dashboard using your institutional Google account.</p>
+            <button class="btn btn-primary btn-google" id="btn-google-signin">
+              <svg class="google-icon" viewBox="0 0 24 24" width="18" height="18">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22-.03-.63z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+              </svg>
+              <span>Sign In with Google</span>
+            </button>
+          </div>
+
+          <!-- Teacher Login (Email/Password) -->
+          <div id="form-teacher" class="auth-form">
+            <p class="form-desc">Access your classes, schedules, and start scanning student attendance.</p>
+            <form id="login-teacher-form" onsubmit="return false;">
+              <div class="form-group">
+                <label for="teacher-email"><i data-lucide="mail"></i> Email Address</label>
+                <input type="email" id="teacher-email" class="form-input" placeholder="teacher@school.edu" required autocomplete="username">
+              </div>
+              <div class="form-group">
+                <label for="teacher-password"><i data-lucide="lock"></i> Password</label>
+                <input type="password" id="teacher-password" class="form-input" placeholder="••••••••" required autocomplete="current-password">
+              </div>
+              <button type="submit" class="btn btn-primary" id="btn-teacher-login">Sign In</button>
+            </form>
+          </div>
+
+          <!-- Admin Login (Email/Password) -->
+          <div id="form-admin" class="auth-form">
+            <p class="form-desc">Manage teachers, configure subjects, and control system preferences.</p>
+            <form id="login-admin-form" onsubmit="return false;">
+              <div class="form-group">
+                <label for="admin-email"><i data-lucide="mail"></i> Admin Email</label>
+                <input type="email" id="admin-email" class="form-input" placeholder="admin@system.com" required autocomplete="username">
+              </div>
+              <div class="form-group">
+                <label for="admin-password"><i data-lucide="lock"></i> Password</label>
+                <input type="password" id="admin-password" class="form-input" placeholder="••••••••" required autocomplete="current-password">
+              </div>
+              <button type="submit" class="btn btn-primary" id="btn-admin-login">Sign In As Admin</button>
+            </form>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= STUDENT DASHBOARD ================= -->
+    <section id="view-student" class="view-section" style="display: none;">
+      <!-- Dashboard Navigation -->
+      <header class="dashboard-header glass-panel">
+        <div class="header-brand">
+          <div class="logo-icon"><i data-lucide="graduation-cap"></i></div>
+          <h2>Aura<span>Attend</span> <span class="role-badge">Student</span></h2>
+        </div>
+        <div class="user-profile" id="student-profile-header">
+          <img src="" alt="Profile" class="user-avatar" id="student-avatar">
+          <div class="user-meta">
+            <span class="user-name" id="student-name-display">Loading...</span>
+            <span class="user-subtitle" id="student-id-display">Student</span>
+          </div>
+          <button class="btn-logout" id="btn-student-logout" title="Log Out"><i data-lucide="log-out"></i></button>
+        </div>
+      </header>
+
+      <!-- Main Layout Grid -->
+      <div class="dashboard-grid">
+        <!-- Sidebar Navigation & QR Generator -->
+        <div class="dashboard-sidebar">
+          <div class="glass-panel sidebar-card">
+            <h3>My Subjects</h3>
+            <p class="sidebar-help">Select a subject below to view details and display your unique attendance QR code.</p>
+            <div class="subject-list" id="student-subject-list">
+              <!-- Dynamically populated subjects -->
+              <div class="empty-state">No subjects enrolled.</div>
+            </div>
+          </div>
+
+          <!-- QR Code Display Area (Initially hidden until a subject is selected) -->
+          <div class="glass-panel sidebar-card qr-display-card" id="student-qr-card" style="display: none;">
+            <div class="card-header">
+              <h3 id="qr-subject-title">Subject QR</h3>
+              <button class="btn-close-card" id="btn-close-qr"><i data-lucide="x"></i></button>
+            </div>
+            <p class="qr-help">Show this QR code to your teacher to mark attendance.</p>
+            <div class="qr-container">
+              <canvas id="student-qr-canvas"></canvas>
+              <div class="qr-timer" id="qr-timer-circle">
+                <span id="qr-timer-text">10s</span>
+              </div>
+            </div>
+            <div class="qr-details">
+              <div class="detail-row"><span>Student ID:</span> <strong id="qr-detail-id">-</strong></div>
+              <div class="detail-row"><span>Full Name:</span> <strong id="qr-detail-name">-</strong></div>
+              <div class="detail-row"><span>Date:</span> <strong id="qr-detail-date">-</strong></div>
+              <div class="detail-row"><span>Room:</span> <strong id="qr-detail-room">-</strong></div>
+            </div>
+            <div class="qr-security-badge">
+              <i data-lucide="shield-alert"></i>
+              <span>Live Code: Anti-screenshot enabled. Code refreshes automatically.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main Workspace: Calendar & Attendance -->
+        <div class="dashboard-main">
+          <!-- Quick Stats Cards -->
+          <div class="stats-row">
+            <div class="stats-card glass-panel">
+              <div class="stats-icon text-indigo"><i data-lucide="calendar-check-2"></i></div>
+              <div class="stats-info">
+                <span class="stats-value" id="student-stat-rate">0%</span>
+                <span class="stats-label">Attendance Rate</span>
+              </div>
+            </div>
+            <div class="stats-card glass-panel">
+              <div class="stats-icon text-green"><i data-lucide="check-circle"></i></div>
+              <div class="stats-info">
+                <span class="stats-value" id="student-stat-present">0</span>
+                <span class="stats-label">Classes Attended</span>
+              </div>
+            </div>
+            <div class="stats-card glass-panel">
+              <div class="stats-icon text-red"><i data-lucide="x-circle"></i></div>
+              <div class="stats-info">
+                <span class="stats-value" id="student-stat-absent">0</span>
+                <span class="stats-label">Absences</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Calendar Card -->
+          <div class="glass-panel main-card">
+            <div class="calendar-header">
+              <h3 id="student-calendar-title">Class Schedule & Attendance</h3>
+              <div class="calendar-nav">
+                <button class="btn-cal-nav" id="student-cal-prev"><i data-lucide="chevron-left"></i></button>
+                <button class="btn-cal-nav-today" id="student-cal-today">Today</button>
+                <button class="btn-cal-nav" id="student-cal-next"><i data-lucide="chevron-right"></i></button>
+              </div>
+            </div>
+            
+            <!-- Modern CSS Grid Calendar -->
+            <div class="calendar-grid-wrapper">
+              <div class="calendar-days-header">
+                <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+              </div>
+              <div class="calendar-days" id="student-calendar-days">
+                <!-- Dynamically populated dates -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= TEACHER DASHBOARD ================= -->
+    <section id="view-teacher" class="view-section" style="display: none;">
+      <!-- Dashboard Navigation -->
+      <header class="dashboard-header glass-panel">
+        <div class="header-brand">
+          <div class="logo-icon"><i data-lucide="briefcase"></i></div>
+          <h2>Aura<span>Attend</span> <span class="role-badge">Teacher</span></h2>
+        </div>
+        <div class="user-profile">
+          <div class="logo-icon text-purple"><i data-lucide="user"></i></div>
+          <div class="user-meta">
+            <span class="user-name" id="teacher-name-display">Teacher Portal</span>
+            <span class="user-subtitle" id="teacher-email-display">teacher@school.edu</span>
+          </div>
+          <button class="btn-logout" id="btn-teacher-logout" title="Log Out"><i data-lucide="log-out"></i></button>
+        </div>
+      </header>
+
+      <!-- Main Layout Grid -->
+      <div class="dashboard-grid">
+        <!-- Sidebar Navigation & Quick Actions -->
+        <div class="dashboard-sidebar">
+          <div class="glass-panel sidebar-card">
+            <h3>Active Session</h3>
+            <p class="sidebar-help">Select the subject you are currently teaching to activate the QR code scanner.</p>
+            
+            <div class="form-group" style="margin-top: 1rem;">
+              <label for="teacher-active-subject">Active Subject</label>
+              <select id="teacher-active-subject" class="form-input">
+                <option value="">-- Choose Subject --</option>
+                <!-- Dynamically populated -->
+              </select>
+            </div>
+
+            <div class="session-info-box" id="teacher-session-info" style="display: none;">
+              <div class="info-row"><span>Time:</span> <strong id="session-info-time">-</strong></div>
+              <div class="info-row"><span>Room:</span> <strong id="session-info-room">-</strong></div>
+              <div class="info-row"><span>Schedule:</span> <strong id="session-info-day">-</strong></div>
+            </div>
+          </div>
+
+          <!-- Present Students list (Real-time updates) -->
+          <div class="glass-panel sidebar-card" style="flex-grow: 1; display: flex; flex-direction: column;">
+            <div class="card-header">
+              <h3>Attendance Log (<span id="attendee-count">0</span>)</h3>
+              <button class="btn-text-action" id="btn-export-attendance" title="Export today's attendance"><i data-lucide="download"></i></button>
+            </div>
+            <p class="sidebar-help">Students checked in for today, <span id="current-session-date">-</span>.</p>
+            <div class="attendee-list" id="teacher-attendee-list">
+              <!-- Dynamically populated attendees list -->
+              <div class="empty-state">No students checked in yet.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main Workspace: Calendar & Scanner -->
+        <div class="dashboard-main">
+          <!-- Calendar Card -->
+          <div class="glass-panel main-card">
+            <div class="calendar-header">
+              <h3 id="teacher-calendar-title">Teaching Schedule</h3>
+              <div class="calendar-nav">
+                <button class="btn-cal-nav" id="teacher-cal-prev"><i data-lucide="chevron-left"></i></button>
+                <button class="btn-cal-nav-today" id="teacher-cal-today">Today</button>
+                <button class="btn-cal-nav" id="teacher-cal-next"><i data-lucide="chevron-right"></i></button>
+              </div>
+            </div>
+            
+            <!-- Modern CSS Grid Calendar -->
+            <div class="calendar-grid-wrapper">
+              <div class="calendar-days-header">
+                <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+              </div>
+              <div class="calendar-days" id="teacher-calendar-days">
+                <!-- Dynamically populated dates -->
+              </div>
+            </div>
+          </div>
+
+          <!-- QR Scanner Card at the Bottom -->
+          <div class="glass-panel main-card scanner-card" id="teacher-scanner-section">
+            <div class="scanner-card-header">
+              <div>
+                <h3>Real-time Attendance QR Scanner</h3>
+                <p class="scanner-subtitle">Select an active subject on the left, then grant camera permission to scan student QR codes.</p>
+              </div>
+              <div class="scanner-controls">
+                <button class="btn btn-secondary" id="btn-toggle-camera" disabled>
+                  <i data-lucide="camera"></i> <span>Start Camera</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Scanning Area -->
+            <div class="scanner-view-container">
+              <div class="scanner-preview-wrapper">
+                <div id="qr-reader" class="scanner-preview"></div>
+                <!-- Visual scanner overlay -->
+                <div class="scanner-laser-line" id="scanner-laser" style="display: none;"></div>
+                <div class="scanner-overlay-text" id="scanner-status-text">Scanner Stopped</div>
+              </div>
+              
+              <div class="scanner-helper-panel">
+                <div class="scanner-instruction-item">
+                  <div class="number-badge">1</div>
+                  <p>Select the correct subject in the left sidebar.</p>
+                </div>
+                <div class="scanner-instruction-item">
+                  <div class="number-badge">2</div>
+                  <p>Click "Start Camera" and allow webcam access.</p>
+                </div>
+                <div class="scanner-instruction-item">
+                  <div class="number-badge">3</div>
+                  <p>Have the student display their live, shifting QR code. Align it within the camera scan window.</p>
+                </div>
+                
+                <div class="scan-result-feedback" id="scan-feedback-box" style="display: none;">
+                  <i data-lucide="check-circle" id="feedback-icon" class="text-green"></i>
+                  <div class="feedback-meta">
+                    <span class="feedback-title" id="feedback-title">Scan Successful</span>
+                    <span class="feedback-desc" id="feedback-desc">Student John Doe marked present.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= ADMIN DASHBOARD ================= -->
+    <section id="view-admin" class="view-section" style="display: none;">
+      <!-- Dashboard Navigation -->
+      <header class="dashboard-header glass-panel">
+        <div class="header-brand">
+          <div class="logo-icon"><i data-lucide="shield-check"></i></div>
+          <h2>Aura<span>Attend</span> <span class="role-badge">System Administrator</span></h2>
+        </div>
+        <div class="user-profile">
+          <div class="logo-icon text-indigo"><i data-lucide="settings"></i></div>
+          <div class="user-meta">
+            <span class="user-name">Administrator</span>
+            <span class="user-subtitle">Full Control</span>
+          </div>
+          <button class="btn-logout" id="btn-admin-logout" title="Log Out"><i data-lucide="log-out"></i></button>
+        </div>
+      </header>
+
+      <!-- Admin Tabs -->
+      <div class="admin-tabs-nav glass-panel">
+        <button class="admin-tab active" data-tab="tab-admin-teachers">
+          <i data-lucide="briefcase"></i><span>Teachers Management</span>
+        </button>
+        <button class="admin-tab" data-tab="tab-admin-subjects">
+          <i data-lucide="book-open"></i><span>Subjects Configuration</span>
+        </button>
+        <button class="admin-tab" data-tab="tab-admin-settings">
+          <i data-lucide="sliders"></i><span>Settings & Security</span>
+        </button>
+      </div>
+
+      <!-- Admin Tab Panels -->
+      <div class="admin-tab-content">
+        
+        <!-- TEACHERS TAB -->
+        <div id="tab-admin-teachers" class="admin-panel active">
+          <div class="admin-grid">
+            <!-- Add Teacher Form -->
+            <div class="glass-panel admin-card">
+              <h3>Create Teacher Account</h3>
+              <p class="form-help">Register a teacher account. Teachers use email & password to log in and manage their classrooms.</p>
+              
+              <form id="add-teacher-form" onsubmit="return false;" style="margin-top: 1rem;">
+                <div class="form-group">
+                  <label for="new-teacher-name">Full Name</label>
+                  <input type="text" id="new-teacher-name" class="form-input" placeholder="Professor John Watson" required>
+                </div>
+                <div class="form-group">
+                  <label for="new-teacher-email">Email Address</label>
+                  <input type="email" id="new-teacher-email" class="form-input" placeholder="watson@school.edu" required>
+                </div>
+                <div class="form-group">
+                  <label for="new-teacher-password">Initial Password</label>
+                  <input type="password" id="new-teacher-password" class="form-input" placeholder="••••••••" required minlength="6">
+                </div>
+                <button type="submit" class="btn btn-primary" id="btn-add-teacher">Add Teacher Account</button>
+              </form>
+            </div>
+
+            <!-- Teachers List -->
+            <div class="glass-panel admin-card" style="flex-grow: 2;">
+              <h3>Registered Teachers</h3>
+              <p class="form-help">List of active instructors in the system. Password changes are processed instantly.</p>
+              <div class="table-container">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Instructor</th>
+                      <th>Email</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-teachers-tbody">
+                    <!-- Dynamically populated -->
+                    <tr><td colspan="3" class="text-center">Loading teachers...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUBJECTS TAB -->
+        <div id="tab-admin-subjects" class="admin-panel">
+          <div class="admin-grid">
+            <!-- Add Subject Form -->
+            <div class="glass-panel admin-card">
+              <h3>Add New Subject</h3>
+              <p class="form-help">Define a curriculum subject, configure the class schedule, and assign a teacher.</p>
+              
+              <form id="add-subject-form" onsubmit="return false;" style="margin-top: 1rem;">
+                <div class="form-group">
+                  <label for="subject-code">Subject Code</label>
+                  <input type="text" id="subject-code" class="form-input" placeholder="CS-101" required>
+                </div>
+                <div class="form-group">
+                  <label for="subject-name">Subject Name</label>
+                  <input type="text" id="subject-name" class="form-input" placeholder="Introduction to Web Development" required>
+                </div>
+                <div class="form-group">
+                  <label for="subject-teacher">Assign Instructor</label>
+                  <select id="subject-teacher" class="form-input" required>
+                    <option value="">-- Select Teacher --</option>
+                    <!-- Dynamically populated -->
+                  </select>
+                </div>
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label for="subject-day">Schedule Day</label>
+                    <select id="subject-day" class="form-input" required>
+                      <option value="Monday">Monday</option>
+                      <option value="Tuesday">Tuesday</option>
+                      <option value="Wednesday">Wednesday</option>
+                      <option value="Thursday">Thursday</option>
+                      <option value="Friday">Friday</option>
+                      <option value="Saturday">Saturday</option>
+                      <option value="Sunday">Sunday</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="subject-room">Room / Lab</label>
+                    <input type="text" id="subject-room" class="form-input" placeholder="Lab 3" required>
+                  </div>
+                </div>
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label for="subject-time-start">Start Time</label>
+                    <input type="time" id="subject-time-start" class="form-input" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="subject-time-end">End Time</label>
+                    <input type="time" id="subject-time-end" class="form-input" required>
+                  </div>
+                </div>
+                <button type="submit" class="btn btn-primary" id="btn-add-subject">Create Subject</button>
+              </form>
+            </div>
+
+            <!-- Subjects List -->
+            <div class="glass-panel admin-card" style="flex-grow: 2;">
+              <h3>Configured Subjects</h3>
+              <p class="form-help">Current subjects schedule and teacher assignments.</p>
+              <div class="table-container">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Code</th>
+                      <th>Subject Title</th>
+                      <th>Instructor</th>
+                      <th>Schedule</th>
+                      <th>Room</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-subjects-tbody">
+                    <!-- Dynamically populated -->
+                    <tr><td colspan="6" class="text-center">Loading subjects...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SETTINGS TAB -->
+        <div id="tab-admin-settings" class="admin-panel">
+          <div class="admin-grid" style="grid-template-columns: 1fr 1fr;">
+            <!-- Change Admin Password -->
+            <div class="glass-panel admin-card">
+              <h3>Administrator Security</h3>
+              <p class="form-help">Update the system-wide administrator access password.</p>
+              
+              <form id="admin-password-form" onsubmit="return false;" style="margin-top: 1rem;">
+                <div class="form-group">
+                  <label for="admin-current-password">Current Admin Password</label>
+                  <input type="password" id="admin-current-password" class="form-input" placeholder="••••••••" required>
+                </div>
+                <div class="form-group">
+                  <label for="admin-new-password">New Admin Password</label>
+                  <input type="password" id="admin-new-password" class="form-input" placeholder="••••••••" required minlength="6">
+                </div>
+                <div class="form-group">
+                  <label for="admin-confirm-password">Confirm New Password</label>
+                  <input type="password" id="admin-confirm-password" class="form-input" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="btn btn-primary" id="btn-change-admin-password">Update Admin Password</button>
+              </form>
+            </div>
+
+            <!-- System Configuration -->
+            <div class="glass-panel admin-card">
+              <h3>System Overview</h3>
+              <p class="form-help">Real-time stats of the attendance system database nodes.</p>
+              
+              <div class="system-stats-panel" style="margin-top: 1rem;">
+                <div class="system-stat-item">
+                  <span class="stat-lbl">Active Students Registered:</span>
+                  <strong class="stat-val" id="admin-stat-students">0</strong>
+                </div>
+                <div class="system-stat-item">
+                  <span class="stat-lbl">Active Teachers Registered:</span>
+                  <strong class="stat-val" id="admin-stat-teachers">0</strong>
+                </div>
+                <div class="system-stat-item">
+                  <span class="stat-lbl">Total Subjects Offered:</span>
+                  <strong class="stat-val" id="admin-stat-subjects">0</strong>
+                </div>
+                <div class="system-stat-item">
+                  <span class="stat-lbl">Total Attendance Records:</span>
+                  <strong class="stat-val" id="admin-stat-records">0</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ================= PROFILE REGISTRATION MODAL ================= -->
+  <div class="modal-overlay" id="modal-student-registration">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title">Complete Profile Registration</h3>
+      </div>
+      <div class="modal-body">
+        <p class="form-help">Welcome! Since this is your first time logging in with Google, please complete your profile information below. This is required for attendance records.</p>
+        
+        <form id="student-registration-form" onsubmit="return false;" style="margin-top: 1rem;">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="reg-first-name">First Name</label>
+              <input type="text" id="reg-first-name" class="form-input" placeholder="Alice" required>
+            </div>
+            <div class="form-group">
+              <label for="reg-last-name">Last Name</label>
+              <input type="text" id="reg-last-name" class="form-input" placeholder="Smith" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="reg-middle-name">Middle Name (Optional)</label>
+            <input type="text" id="reg-middle-name" class="form-input" placeholder="Marie">
+          </div>
+          <div class="form-group">
+            <label for="reg-student-id">Student ID Number (Optional)</label>
+            <input type="text" id="reg-student-id" class="form-input" placeholder="2026-10023">
+          </div>
+          <button type="submit" class="btn btn-primary" id="btn-submit-registration" style="width: 100%; justify-content: center; margin-top: 1rem;">
+            Save & Enter Dashboard
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= DAY DETAILS MODAL (CALENDAR CLICK) ================= -->
+  <div class="modal-overlay" id="modal-day-details">
+    <div class="modal-container" style="max-width: 450px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="day-modal-title">Schedule Details</h3>
+        <span class="modal-close" id="btn-close-day-modal">&times;</span>
+      </div>
+      <div class="modal-body">
+        <p class="form-help" id="day-modal-subtitle">Schedule and attendance log for the day.</p>
+        <div id="day-modal-content">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= ADMIN CHANGE TEACHER PASSWORD MODAL ================= -->
+  <div class="modal-overlay" id="modal-change-teacher-password">
+    <div class="modal-container" style="max-width: 400px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Change Teacher Password</h3>
+        <span class="modal-close" id="btn-close-teacher-pwd-modal">&times;</span>
+      </div>
+      <div class="modal-body">
+        <p class="form-help">Update the password for <strong id="pwd-modal-teacher-name">-</strong>.</p>
+        <form id="teacher-pwd-change-form" onsubmit="return false;" style="margin-top: 1rem;">
+          <input type="hidden" id="pwd-modal-teacher-id">
+          <div class="form-group">
+            <label for="pwd-modal-new-password">New Password</label>
+            <input type="password" id="pwd-modal-new-password" class="form-input" placeholder="••••••••" required minlength="6">
+          </div>
+          <button type="submit" class="btn btn-primary" id="btn-save-teacher-password" style="width: 100%; justify-content: center; margin-top: 1rem;">
+            Save Password
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast">Notification Message</div>
+
+  <!-- Main JavaScript App -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>
