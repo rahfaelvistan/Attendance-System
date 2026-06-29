@@ -2193,3 +2193,136 @@ body::before {
 .admin-panel, .auth-form, .view-section {
   will-change: opacity, transform;
 }
+
+/* ===================== ATTENDANCE QR PULSE ===================== */
+/* Animated pulsing ring around the Attendance QR canvas */
+.attendance-qr-pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 360px;
+  height: 360px;
+  border-radius: var(--radius-lg);
+  pointer-events: none;
+  z-index: 0;
+  animation: qr-pulse-ring 2.5s ease-out infinite;
+}
+
+@keyframes qr-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 122, 255, 0.45);
+    opacity: 1;
+  }
+  70% {
+    box-shadow: 0 0 0 18px rgba(0, 122, 255, 0);
+    opacity: 0.4;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 122, 255, 0);
+    opacity: 0;
+  }
+}
+
+/* Success flash overlay on student scan */
+@keyframes scan-success-flash {
+  0%   { opacity: 0; }
+  15%  { opacity: 0.7; }
+  100% { opacity: 0; }
+}
+
+.scan-success-flash {
+  position: fixed;
+  inset: 0;
+  background: rgba(52, 199, 89, 0.35);
+  pointer-events: none;
+  z-index: 9999;
+  animation: scan-success-flash 0.9s ease-out forwards;
+}
+
+/* ===================== ZOOM CONTROL ===================== */
+.zoom-control-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin: 8px 0 2px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 100px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.zoom-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--text-tertiary);
+}
+
+.zoom-label {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 32px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom range slider — iOS pill style */
+.zoom-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  height: 4px;
+  border-radius: 100px;
+  background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--zoom-pct, 0%), var(--ios-separator) var(--zoom-pct, 0%), var(--ios-separator) 100%);
+  outline: none;
+  cursor: pointer;
+  transition: height 0.15s ease;
+}
+
+.zoom-slider:active {
+  height: 6px;
+}
+
+.zoom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.22), 0 0 0 2px var(--accent);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.zoom-slider::-webkit-slider-thumb:active {
+  transform: scale(1.2);
+  box-shadow: 0 2px 10px rgba(0,122,255,0.35), 0 0 0 3px var(--accent);
+}
+
+.zoom-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.22), 0 0 0 2px var(--accent);
+  cursor: pointer;
+}
+
+/* Scanner viewport needs overflow hidden for CSS-based digital zoom */
+.qr-reader-box {
+  overflow: hidden !important;
+}
+
+.qr-reader-box video {
+  transform-origin: center center;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}

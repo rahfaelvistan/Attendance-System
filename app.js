@@ -198,6 +198,20 @@ const el = {
   studentJoinReader: document.getElementById('student-join-reader'),
   btnCloseStudentJoinScanner: document.getElementById('btn-close-student-join-scanner'),
   studentJoinStatus: document.getElementById('student-join-status'),
+
+  // Attendance QR (Teacher generates, Student scans)
+  btnTeacherAttendanceQr: document.getElementById('btn-teacher-attendance-qr'),
+  modalTeacherAttendanceQr: document.getElementById('modal-teacher-attendance-qr'),
+  teacherAttendanceQrCanvas: document.getElementById('teacher-attendance-qr-canvas'),
+  teacherAttendanceQrSelect: document.getElementById('teacher-attendance-qr-select'),
+  teacherAttendanceQrTimer: document.getElementById('teacher-attendance-qr-timer'),
+  teacherAttendanceQrSubjectName: document.getElementById('teacher-attendance-qr-subject-name'),
+  btnCloseTeacherAttendanceQr: document.getElementById('btn-close-teacher-attendance-qr'),
+  btnStudentScanAttendance: document.getElementById('btn-student-scan-attendance'),
+  modalStudentAttendanceScanner: document.getElementById('modal-student-attendance-scanner'),
+  studentAttendanceReader: document.getElementById('student-attendance-reader'),
+  btnCloseStudentAttendanceScanner: document.getElementById('btn-close-student-attendance-scanner'),
+  studentAttendanceStatus: document.getElementById('student-attendance-status'),
   
   // Toast
   toast: document.getElementById('toast')
@@ -308,11 +322,15 @@ function routeToView(viewName) {
   if (viewName !== 'student') {
     stopQrGenerator();
     stopStudentJoinScanner();
+    stopStudentAttendanceScanner();
     if (el.modalFullscreenQr) {
       toggleModal(el.modalFullscreenQr, false);
     }
     if (el.modalStudentJoinScanner) {
       toggleModal(el.modalStudentJoinScanner, false);
+    }
+    if (el.modalStudentAttendanceScanner) {
+      toggleModal(el.modalStudentAttendanceScanner, false);
     }
   }
 
@@ -320,8 +338,12 @@ function routeToView(viewName) {
   if (viewName !== 'teacher') {
     stopScanner();
     stopTeacherJoinQrGenerator();
+    stopTeacherAttendanceQrGenerator();
     if (el.modalTeacherJoinQr) {
       toggleModal(el.modalTeacherJoinQr, false);
+    }
+    if (el.modalTeacherAttendanceQr) {
+      toggleModal(el.modalTeacherAttendanceQr, false);
     }
   }
 
@@ -452,6 +474,109 @@ function setupEventListeners() {
   if (el.btnCloseStudentJoinScanner) {
     el.btnCloseStudentJoinScanner.addEventListener('click', closeStudentJoinScanner);
   }
+
+  // Teacher Attendance QR (Teacher generates → students scan)
+  if (el.btnTeacherAttendanceQr) {
+    el.btnTeacherAttendanceQr.addEventListener('click', openTeacherAttendanceQrModal);
+  }
+  if (el.btnCloseTeacherAttendanceQr) {
+    el.btnCloseTeacherAttendanceQr.addEventListener('click', closeTeacherAttendanceQrModal);
+  }
+  if (el.teacherAttendanceQrSelect) {
+    el.teacherAttendanceQrSelect.addEventListener('change', (e) => handleTeacherAttendanceQrSubjectChange(e.target.value));
+  }
+
+  // Student Attendance Scanner (Student scans teacher's Attendance QR)
+  if (el.btnStudentScanAttendance) {
+    el.btnStudentScanAttendance.addEventListener('click', openStudentAttendanceScanner);
+  }
+  if (el.btnCloseStudentAttendanceScanner) {
+    el.btnCloseStudentAttendanceScanner.addEventListener('click', closeStudentAttendanceScanner);
+  }
+}
+
+// ================= CAMERA ZOOM ENGINE =================
+/**
+ * Sets up hardware optical zoom (Android) with CSS digital zoom fallback (iOS).
+ * Reveals the zoom slider after the camera stream is ready.
+ *
+ * @param {string} readerId   - ID of the qr-reader div (contains the <video>)
+ * @param {string} sliderId   - ID of the <input type="range"> zoom slider
+ * @param {string} labelId    - ID of the zoom level <span>
+ * @param {string} rowId      - ID of the zoom control row (shown after ready)
+ */
+function setupCameraZoom(readerId, sliderId, labelId, rowId) {
+  // Wait a tick for html5-qrcode to inject the <video> element
+  setTimeout(() => {
+    const readerEl  = document.getElementById(readerId);
+    const slider    = document.getElementById(sliderId);
+    const label     = document.getElementById(labelId);
+    const row       = document.getElementById(rowId);
+
+    if (!readerEl || !slider || !label || !row) return;
+
+    const video = readerEl.querySelector('video');
+    if (!video) return;
+
+    // Show zoom row
+    row.style.display = 'flex';
+    lucide.createIcons();
+
+    // Try to get the camera track for hardware zoom
+    const stream = video.srcObject;
+    let track = null;
+    let hwZoomMin = 1, hwZoomMax = 1, hwZoomSupported = false;
+
+    if (stream) {
+      const tracks = stream.getVideoTracks();
+      if (tracks.length > 0) {
+        track = tracks[0];
+        const caps = track.getCapabilities ? track.getCapabilities() : {};
+        if (caps.zoom) {
+          hwZoomMin = caps.zoom.min || 1;
+          hwZoomMax = caps.zoom.max || 5;
+          hwZoomSupported = true;
+          slider.min   = hwZoomMin;
+          slider.max   = hwZoomMax;
+          slider.step  = (hwZoomMax - hwZoomMin) / 50;
+          slider.value = hwZoomMin;
+        }
+      }
+    }
+
+    // Update slider fill gradient
+    function updateSliderFill(val) {
+      const min = parseFloat(slider.min);
+      const max = parseFloat(slider.max);
+      const pct = ((val - min) / (max - min)) * 100;
+      slider.style.setProperty('--zoom-pct', pct + '%');
+    }
+
+    // Apply zoom: hardware if supported, CSS digital otherwise
+    slider.addEventListener('input', () => {
+      const val = parseFloat(slider.value);
+      const displayVal = hwZoomSupported
+        ? val.toFixed(1)
+        : val.toFixed(1);
+      label.textContent = displayVal + '\u00d7';
+      updateSliderFill(val);
+
+      if (hwZoomSupported && track) {
+        // Hardware optical zoom (Android Chrome, Edge)
+        track.applyConstraints({ advanced: [{ zoom: val }] })
+          .catch(e => {
+            // Fallback to CSS digital zoom if hardware fails
+            video.style.transform = `scale(${val})`;
+          });
+      } else {
+        // CSS digital zoom fallback (iOS Safari, unsupported browsers)
+        video.style.transform = `scale(${val})`;
+      }
+    });
+
+    // Init fill at default
+    updateSliderFill(parseFloat(slider.value));
+  }, 800); // 800ms delay — enough for html5-qrcode to inject video
 }
 
 // ================= AUDIO CHIME SYNTHESIZER =================
@@ -1304,7 +1429,7 @@ function startScanner() {
   // Dynamic responsive qrbox sizing function
   const qrboxFunction = (viewfinderWidth, viewfinderHeight) => {
     const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-    const qrboxSize = Math.floor(minEdge * 0.7);
+    const qrboxSize = Math.floor(minEdge * 0.85);
     return {
       width: qrboxSize,
       height: qrboxSize
@@ -1312,9 +1437,14 @@ function startScanner() {
   };
 
   const config = { 
-    fps: 15, 
+    fps: 25, 
     qrbox: qrboxFunction,
-    aspectRatio: 1.0
+    aspectRatio: 1.0,
+    videoConstraints: {
+      facingMode: "environment",
+      width: { ideal: 1920 },
+      height: { ideal: 1080 }
+    }
   };
 
   state.html5QrScanner.start(
@@ -2393,7 +2523,7 @@ function openStudentJoinScanner() {
   // Dynamic responsive qrbox sizing function
   const qrboxFunction = (viewfinderWidth, viewfinderHeight) => {
     const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-    const qrboxSize = Math.floor(minEdge * 0.7);
+    const qrboxSize = Math.floor(minEdge * 0.85);
     return {
       width: qrboxSize,
       height: qrboxSize
@@ -2401,9 +2531,14 @@ function openStudentJoinScanner() {
   };
 
   const config = { 
-    fps: 15, 
+    fps: 25, 
     qrbox: qrboxFunction,
-    aspectRatio: 1.0
+    aspectRatio: 1.0,
+    videoConstraints: {
+      facingMode: "environment",
+      width: { ideal: 1920 },
+      height: { ideal: 1080 }
+    }
   };
 
   state.studentJoinQrScanner.start(
@@ -2411,7 +2546,10 @@ function openStudentJoinScanner() {
     config,
     onStudentJoinQrSuccess,
     onStudentJoinQrFailure
-  ).catch(err => {
+  ).then(() => {
+    // Set up zoom controls after camera starts
+    setupCameraZoom('student-join-reader', 'join-zoom-slider', 'join-zoom-label', 'join-zoom-row');
+  }).catch(err => {
     console.error("Join Camera startup failed", err);
     if (el.studentJoinStatus) {
       el.studentJoinStatus.textContent = "Failed to open camera. Grant permissions.";
@@ -2427,6 +2565,14 @@ function stopStudentJoinScanner() {
     el.studentJoinStatus.textContent = "Scanner Stopped";
     el.studentJoinStatus.style.color = "var(--text-muted)";
   }
+
+  // Reset zoom controls
+  const zoomRow = document.getElementById('join-zoom-row');
+  const zoomSlider = document.getElementById('join-zoom-slider');
+  const zoomLabel = document.getElementById('join-zoom-label');
+  if (zoomRow) zoomRow.style.display = 'none';
+  if (zoomSlider) { zoomSlider.value = 1; zoomSlider.style.setProperty('--zoom-pct', '0%'); }
+  if (zoomLabel) zoomLabel.textContent = '1×';
   
   if (state.studentJoinQrScanner) {
     state.studentJoinQrScanner.stop().then(() => {
@@ -2544,4 +2690,385 @@ function formatDateHumanReadable(dateStr) {
   const parts = dateStr.split('-');
   const date = new Date(parts[0], parts[1] - 1, parts[2]);
   return date.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+
+// ================= TEACHER ATTENDANCE QR (Students scan to self-record) =================
+
+/**
+ * Opens the Teacher Attendance QR modal.
+ * Populates subject dropdown with teacher's own subjects.
+ * Auto-selects first subject if available and starts the QR generator.
+ */
+function openTeacherAttendanceQrModal() {
+  if (!state.teacherProfile) return;
+
+  const select = el.teacherAttendanceQrSelect;
+  select.innerHTML = '<option value="">-- Choose Subject --</option>';
+
+  let firstSubjectId = "";
+  Object.values(state.subjects).forEach(subject => {
+    if (subject.teacherId === state.teacherProfile.uid) {
+      const option = document.createElement('option');
+      option.value = subject.id;
+      option.textContent = `${subject.code} - ${subject.name}`;
+      select.appendChild(option);
+      if (!firstSubjectId) firstSubjectId = subject.id;
+    }
+  });
+
+  if (firstSubjectId) {
+    select.value = firstSubjectId;
+    state.activeAttendanceSubjectId = firstSubjectId;
+    el.teacherAttendanceQrSubjectName.textContent = state.subjects[firstSubjectId].name;
+    generateTeacherAttendanceQr();
+    startTeacherAttendanceQrGenerator();
+  } else {
+    state.activeAttendanceSubjectId = null;
+    el.teacherAttendanceQrSubjectName.textContent = "No subjects assigned";
+    const canvas = el.teacherAttendanceQrCanvas;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+
+  toggleModal(el.modalTeacherAttendanceQr, true);
+}
+
+function closeTeacherAttendanceQrModal() {
+  stopTeacherAttendanceQrGenerator();
+  toggleModal(el.modalTeacherAttendanceQr, false);
+}
+
+function handleTeacherAttendanceQrSubjectChange(subjectId) {
+  state.activeAttendanceSubjectId = subjectId;
+  if (subjectId && state.subjects[subjectId]) {
+    el.teacherAttendanceQrSubjectName.textContent = state.subjects[subjectId].name;
+    generateTeacherAttendanceQr();
+    startTeacherAttendanceQrGenerator();
+  } else {
+    el.teacherAttendanceQrSubjectName.textContent = "Select a subject";
+    stopTeacherAttendanceQrGenerator();
+    const canvas = el.teacherAttendanceQrCanvas;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+}
+
+/**
+ * Generates a fresh signed Attendance QR Code for the active subject.
+ * Writes a fresh OTP + timestamp to Firebase at: attendance_tokens/{subjectId}
+ * QR payload: { y:"attendance", s:subjectId, t:timestamp, o:otp }
+ */
+async function generateTeacherAttendanceQr() {
+  const subjectId = state.activeAttendanceSubjectId;
+  if (!subjectId || !state.subjects[subjectId]) return;
+
+  const now = new Date();
+
+  // Generate a cryptographic one-time-password
+  const otp = Math.random().toString(36).substring(2, 10).toUpperCase();
+
+  // Write OTP to Firebase so students can verify it
+  try {
+    const tokenRef = ref(db, `attendance_tokens/${subjectId}`);
+    await set(tokenRef, {
+      otp: otp,
+      timestamp: serverTimestamp(),
+      subjectId: subjectId,
+      teacherId: state.teacherProfile.uid
+    });
+  } catch (err) {
+    console.error("Failed to write attendance token", err);
+  }
+
+  const payloadObj = {
+    y: "attendance",
+    s: subjectId,
+    t: now.getTime(),
+    o: otp
+  };
+
+  const payloadString = JSON.stringify(payloadObj);
+
+  if (typeof QRious !== 'undefined' && el.teacherAttendanceQrCanvas) {
+    new QRious({
+      element: el.teacherAttendanceQrCanvas,
+      value: payloadString,
+      size: 350,
+      background: '#ffffff',
+      foreground: '#0b0f19',
+      level: 'M'
+    });
+  } else {
+    console.error("QRious library not loaded or canvas missing.");
+  }
+}
+
+function startTeacherAttendanceQrGenerator() {
+  stopTeacherAttendanceQrGenerator();
+
+  state.teacherAttendanceQrTimeRemaining = 30;
+  if (el.teacherAttendanceQrTimer) {
+    el.teacherAttendanceQrTimer.textContent = `${state.teacherAttendanceQrTimeRemaining}s`;
+  }
+
+  state.teacherAttendanceQrInterval = setInterval(() => {
+    state.teacherAttendanceQrTimeRemaining--;
+
+    if (state.teacherAttendanceQrTimeRemaining <= 0) {
+      state.teacherAttendanceQrTimeRemaining = 30;
+      generateTeacherAttendanceQr();
+    }
+
+    if (el.teacherAttendanceQrTimer) {
+      el.teacherAttendanceQrTimer.textContent = `${state.teacherAttendanceQrTimeRemaining}s`;
+    }
+  }, 1000);
+}
+
+function stopTeacherAttendanceQrGenerator() {
+  if (state.teacherAttendanceQrInterval) {
+    clearInterval(state.teacherAttendanceQrInterval);
+    state.teacherAttendanceQrInterval = null;
+  }
+}
+
+
+// ================= STUDENT ATTENDANCE SCANNER (Scans Teacher's Attendance QR) =================
+
+/**
+ * Opens the student's camera to scan the teacher's Attendance QR code.
+ */
+function openStudentAttendanceScanner() {
+  if (!state.studentProfile) {
+    showToast("Student profile not found. Please log in again.", "error");
+    return;
+  }
+
+  state.isStudentAttendanceCameraRunning = true;
+  if (el.studentAttendanceStatus) {
+    el.studentAttendanceStatus.textContent = "Camera Streaming — point at teacher's QR...";
+    el.studentAttendanceStatus.style.color = "var(--status-success)";
+  }
+  toggleModal(el.modalStudentAttendanceScanner, true);
+
+  state.studentAttendanceQrScanner = new Html5Qrcode("student-attendance-reader");
+
+  const qrboxFunction = (viewfinderWidth, viewfinderHeight) => {
+    const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+    const qrboxSize = Math.floor(minEdge * 0.85);
+    return { width: qrboxSize, height: qrboxSize };
+  };
+
+  const config = {
+    fps: 25,
+    qrbox: qrboxFunction,
+    aspectRatio: 1.0,
+    videoConstraints: {
+      facingMode: "environment",
+      width: { ideal: 1920 },
+      height: { ideal: 1080 }
+    }
+  };
+
+  state.studentAttendanceQrScanner.start(
+    { facingMode: "environment" },
+    config,
+    onStudentAttendanceQrSuccess,
+    onStudentAttendanceQrFailure
+  ).then(() => {
+    // Set up zoom controls after camera is live
+    setupCameraZoom('student-attendance-reader', 'attendance-zoom-slider', 'attendance-zoom-label', 'attendance-zoom-row');
+  }).catch(err => {
+    console.error("Attendance scanner startup failed", err);
+    if (el.studentAttendanceStatus) {
+      el.studentAttendanceStatus.textContent = "Failed to open camera. Grant permissions.";
+      el.studentAttendanceStatus.style.color = "var(--status-error)";
+    }
+    stopStudentAttendanceScanner();
+  });
+}
+
+function stopStudentAttendanceScanner() {
+  state.isStudentAttendanceCameraRunning = false;
+  if (el.studentAttendanceStatus) {
+    el.studentAttendanceStatus.textContent = "Scanner Stopped";
+    el.studentAttendanceStatus.style.color = "var(--text-muted)";
+  }
+
+  // Reset zoom controls
+  const zoomRow = document.getElementById('attendance-zoom-row');
+  const zoomSlider = document.getElementById('attendance-zoom-slider');
+  const zoomLabel = document.getElementById('attendance-zoom-label');
+  if (zoomRow) zoomRow.style.display = 'none';
+  if (zoomSlider) { zoomSlider.value = 1; zoomSlider.style.setProperty('--zoom-pct', '0%'); }
+  if (zoomLabel) zoomLabel.textContent = '1×';
+
+  if (state.studentAttendanceQrScanner) {
+    state.studentAttendanceQrScanner.stop().then(() => {
+      state.studentAttendanceQrScanner = null;
+    }).catch(err => {
+      console.error("Error stopping attendance scanner", err);
+      state.studentAttendanceQrScanner = null;
+    });
+  }
+}
+
+function closeStudentAttendanceScanner() {
+  stopStudentAttendanceScanner();
+  toggleModal(el.modalStudentAttendanceScanner, false);
+}
+
+function onStudentAttendanceQrSuccess(decodedText) {
+  // Prevent re-entry while processing
+  if (state.isStudentAttendanceProcessing) return;
+
+  try {
+    const qrData = JSON.parse(decodedText);
+    const type = qrData.y || qrData.type;
+    if (type === 'attendance') {
+      state.isStudentAttendanceProcessing = true;
+      validateAndRecordStudentAttendance(qrData);
+    } else {
+      showToast("This is not an Attendance QR code. Ask teacher for the correct one.", "warning");
+    }
+  } catch (error) {
+    showToast("Invalid QR Code format.", "error");
+  }
+}
+
+function onStudentAttendanceQrFailure(error) {
+  // Silence verbose scanning noise
+}
+
+/**
+ * Validates the scanned Attendance QR against Firebase, then records attendance.
+ * Security checks:
+ *  1. QR payload must have y=="attendance", subjectId, otp, timestamp
+ *  2. OTP must match attendance_tokens/{subjectId}.otp in Firebase
+ *  3. Token must be no older than 35s (5s buffer for latency)
+ *  4. Student must be enrolled in the subject
+ *  5. Student must NOT already have an attendance record today
+ */
+async function validateAndRecordStudentAttendance(qrData) {
+  const studentUid = state.studentProfile ? state.studentProfile.uid : null;
+  const subjectId = qrData.s || qrData.subjectId;
+  const otp = qrData.o || qrData.otp;
+  const qrTimestamp = qrData.t || qrData.timestamp;
+  const now = new Date();
+  const todayStr = getFormattedDateString(now);
+
+  // --- 1. Basic field validation ---
+  if (!studentUid || !subjectId || !otp || !qrTimestamp) {
+    playSound('error');
+    showToast("Malformed QR code. Contact teacher.", "error");
+    state.isStudentAttendanceProcessing = false;
+    return;
+  }
+
+  // Stop scanner immediately so it doesn't fire again
+  stopStudentAttendanceScanner();
+
+  try {
+    // --- 2. Fetch & validate Firebase token ---
+    const tokenRef = ref(db, `attendance_tokens/${subjectId}`);
+    const snapshot = await get(tokenRef);
+
+    if (!snapshot.exists()) {
+      playSound('error');
+      showToast("Attendance QR has expired. Ask teacher to refresh.", "error");
+      toggleModal(el.modalStudentAttendanceScanner, false);
+      state.isStudentAttendanceProcessing = false;
+      return;
+    }
+
+    const tokenData = snapshot.val();
+
+    // --- 3. OTP Match ---
+    if (tokenData.otp !== otp) {
+      playSound('error');
+      showToast("QR verification failed. Please scan the live code on screen.", "error");
+      toggleModal(el.modalStudentAttendanceScanner, false);
+      state.isStudentAttendanceProcessing = false;
+      return;
+    }
+
+    // --- 4. Token age check (must be within 35 seconds) ---
+    const tokenTime = new Date(tokenData.timestamp);
+    const ageSec = (now.getTime() - tokenTime.getTime()) / 1000;
+    if (ageSec > 35) {
+      playSound('error');
+      showToast("QR code expired (older than 30s). Ask teacher to refresh.", "error");
+      toggleModal(el.modalStudentAttendanceScanner, false);
+      state.isStudentAttendanceProcessing = false;
+      return;
+    }
+
+    // --- 5. Enrollment check ---
+    const isEnrolled = state.subjectEnrollments &&
+                       state.subjectEnrollments[subjectId] &&
+                       state.subjectEnrollments[subjectId][studentUid];
+    if (!isEnrolled) {
+      playSound('error');
+      showToast("You are not enrolled in this subject. Scan the Join QR first.", "error");
+      toggleModal(el.modalStudentAttendanceScanner, false);
+      state.isStudentAttendanceProcessing = false;
+      return;
+    }
+
+    // --- 6. Duplicate check: already marked present today? ---
+    const existingAttendanceRef = ref(db, `attendance/${subjectId}/${todayStr}/${studentUid}`);
+    const existingSnapshot = await get(existingAttendanceRef);
+    if (existingSnapshot.exists()) {
+      // Already recorded — still a success for the student
+      playSound('success');
+      showToast("You are already marked Present for today's class! ✓", "warning");
+      toggleModal(el.modalStudentAttendanceScanner, false);
+      state.isStudentAttendanceProcessing = false;
+      return;
+    }
+
+    // --- 7. Write attendance record ---
+    const studentName = `${state.studentProfile.firstName} ${state.studentProfile.lastName}`;
+    const studentIdNo = state.studentProfile.studentIdNumber || 'N/A';
+
+    const attendanceRecord = {
+      studentId: studentUid,
+      studentIdNumber: studentIdNo,
+      name: studentName,
+      timestamp: serverTimestamp(),
+      status: "Present",
+      scannedBy: tokenData.teacherId || "self-scan",
+      method: "student-qr-scan"
+    };
+
+    await set(existingAttendanceRef, attendanceRecord);
+
+    // --- 8. Success! ---
+    playSound('success');
+    showToast(`✓ Attendance recorded! Welcome, ${state.studentProfile.firstName}!`);
+    toggleModal(el.modalStudentAttendanceScanner, false);
+
+    // Full-screen green flash effect
+    const flash = document.createElement('div');
+    flash.className = 'scan-success-flash';
+    document.body.appendChild(flash);
+    setTimeout(() => flash.remove(), 900);
+
+    // Refresh student stats
+    calculateStudentStats();
+    renderCalendar('student');
+
+  } catch (err) {
+    console.error("Student attendance recording error", err);
+    playSound('error');
+    showToast("Failed to record attendance. Check your connection.", "error");
+    toggleModal(el.modalStudentAttendanceScanner, false);
+  } finally {
+    state.isStudentAttendanceProcessing = false;
+  }
 }

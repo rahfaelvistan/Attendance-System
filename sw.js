@@ -43,8 +43,32 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event handler with Cache-First strategy for static assets
 self.addEventListener('fetch', (event) => {
-  // Only handle GET requests and skip Firebase WebSocket or REST API requests
-  if (event.request.method !== 'GET' || event.request.url.includes('firebaseio.com') || event.request.url.includes('googleapis.com/v1/projects')) {
+  // Only handle GET requests
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
+  const url = new URL(event.request.url);
+
+  // Define whitelisted external domains for CDNs
+  const isWhitelistedCDN = [
+    'unpkg.com',
+    'cdnjs.cloudflare.com',
+    'fonts.googleapis.com',
+    'fonts.gstatic.com',
+    'www.gstatic.com'
+  ].some(domain => url.hostname.includes(domain));
+
+  const isSameOrigin = url.origin === self.location.origin;
+
+  // Only intercept same-origin static assets or whitelisted CDNs
+  // Skip Firebase Auth, Database REST API, WebSockets, or other external auth handlers
+  if (!isSameOrigin && !isWhitelistedCDN) {
+    return;
+  }
+
+  // Also skip Firebase Realtime Database websocket/SSE/REST requests and Auth handlers
+  if (url.hostname.includes('firebaseio.com') || url.pathname.includes('/__/auth/')) {
     return;
   }
 
@@ -68,7 +92,8 @@ self.addEventListener('fetch', (event) => {
 
       // If not in cache, fetch from network
       return fetch(event.request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic' && !event.request.url.startsWith('https://')) {
+        // Cache resources only if valid response status 200
+        if (!networkResponse || networkResponse.status !== 200) {
           return networkResponse;
         }
 
@@ -81,7 +106,6 @@ self.addEventListener('fetch', (event) => {
         return networkResponse;
       }).catch((err) => {
         console.warn('[Service Worker] Fetch failed, resource not available offline:', event.request.url);
-        // If offline and request is for page, could return offline.html here if needed
       });
     })
   );

@@ -102,8 +102,9 @@
         <div class="student-sidebar glass-panel">
           <h4 class="sidebar-title"><i data-lucide="book-open"></i> My Subjects</h4>
           <div id="student-subject-list" class="subject-list"></div>
-          <!-- Join Subject via QR Scan -->
+          <!-- Attendance & Join Subject QR Scan Buttons -->
           <div class="join-subject-section">
+            <button id="btn-student-scan-attendance" class="btn btn-primary btn-full" style="margin-bottom: 0.5rem;"><i data-lucide="scan-line"></i> <span>Scan Attendance QR</span></button>
             <button id="btn-student-join-scan" class="btn btn-secondary btn-full"><i data-lucide="qr-code"></i> <span>Scan to Join Subject</span></button>
           </div>
         </div>
@@ -176,6 +177,7 @@
           </div>
         </div>
         <div class="topbar-actions">
+          <button id="btn-teacher-attendance-qr" class="btn btn-primary"><i data-lucide="scan-line"></i> <span>Attendance QR</span></button>
           <button id="btn-teacher-join-qr" class="btn btn-secondary"><i data-lucide="qr-code"></i> <span>Join QR</span></button>
           <button id="btn-teacher-logout" class="btn btn-ghost"><i data-lucide="log-out"></i> <span>Logout</span></button>
         </div>
@@ -416,6 +418,35 @@
     </div>
   </div>
 
+  <!-- Teacher Attendance QR Modal -->
+  <div id="modal-teacher-attendance-qr" class="modal-overlay">
+    <div class="modal-card glass-panel modal-qr-card">
+      <div class="modal-card-header">
+        <div>
+          <h3 class="modal-title"><i data-lucide="scan-line"></i> Attendance QR Code</h3>
+          <p id="teacher-attendance-qr-subject-name" class="text-muted">Select a subject</p>
+        </div>
+        <button id="btn-close-teacher-attendance-qr" class="btn-icon"><i data-lucide="x"></i></button>
+      </div>
+      <div class="join-qr-subject-selector">
+        <label>Subject</label>
+        <select id="teacher-attendance-qr-select" class="input select-input">
+          <option value="">-- Choose Subject --</option>
+        </select>
+      </div>
+      <div class="join-qr-canvas-container" style="position:relative;">
+        <canvas id="teacher-attendance-qr-canvas" width="350" height="350"></canvas>
+        <div class="qr-timer">
+          <i data-lucide="timer"></i>
+          <span id="teacher-attendance-qr-timer">30s</span>
+        </div>
+        <!-- Animated pulse ring -->
+        <div class="attendance-qr-pulse"></div>
+      </div>
+      <p class="text-muted text-center" style="font-size:0.8rem;"><i data-lucide="shield-check" style="width:13px;height:13px;display:inline;vertical-align:middle;"></i> Students scan this to mark attendance. Refreshes every 30s.</p>
+    </div>
+  </div>
+
   <!-- Teacher Join QR Modal -->
   <div id="modal-teacher-join-qr" class="modal-overlay">
     <div class="modal-card glass-panel modal-qr-card">
@@ -443,6 +474,30 @@
     </div>
   </div>
 
+  <!-- Student Attendance QR Scanner Modal -->
+  <div id="modal-student-attendance-scanner" class="modal-overlay">
+    <div class="modal-card glass-panel">
+      <div class="modal-card-header">
+        <div>
+          <h3 class="modal-title"><i data-lucide="scan-line"></i> Scan Attendance QR</h3>
+          <p class="text-muted">Point your camera at the teacher's Attendance QR code</p>
+        </div>
+        <button id="btn-close-student-attendance-scanner" class="btn-icon"><i data-lucide="x"></i></button>
+      </div>
+      <div class="scanner-viewport">
+        <div id="student-attendance-reader" class="qr-reader-box"></div>
+      </div>
+      <!-- Zoom Control -->
+      <div class="zoom-control-row" id="attendance-zoom-row" style="display:none;">
+        <i data-lucide="zoom-out" class="zoom-icon"></i>
+        <input type="range" id="attendance-zoom-slider" class="zoom-slider" min="1" max="5" step="0.1" value="1">
+        <i data-lucide="zoom-in" class="zoom-icon"></i>
+        <span id="attendance-zoom-label" class="zoom-label">1×</span>
+      </div>
+      <p id="student-attendance-status" class="scanner-status">Initializing camera...</p>
+    </div>
+  </div>
+
   <!-- Student Join Scanner Modal -->
   <div id="modal-student-join-scanner" class="modal-overlay">
     <div class="modal-card glass-panel">
@@ -455,6 +510,13 @@
       </div>
       <div class="scanner-viewport">
         <div id="student-join-reader" class="qr-reader-box"></div>
+      </div>
+      <!-- Zoom Control -->
+      <div class="zoom-control-row" id="join-zoom-row" style="display:none;">
+        <i data-lucide="zoom-out" class="zoom-icon"></i>
+        <input type="range" id="join-zoom-slider" class="zoom-slider" min="1" max="5" step="0.1" value="1">
+        <i data-lucide="zoom-in" class="zoom-icon"></i>
+        <span id="join-zoom-label" class="zoom-label">1×</span>
       </div>
       <p id="student-join-status" class="scanner-status">Initializing camera...</p>
     </div>

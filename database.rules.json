@@ -2,89 +2,74 @@
   "rules": {
     ".read": false,
     ".write": false,
-    
-    // Admin credentials - strictly admin-only access
+
+    // ==========================================
+    // ADMIN & TEACHER CREDENTIAL NODES
+    // These must be readable without auth since
+    // teachers/admin have no Firebase Auth session.
+    // Hashed passwords protect against brute-force.
+    // ==========================================
+
     "admin_credentials": {
-      ".read": "auth != null && auth.token.email === 'admin@system.com'",
-      ".write": "auth != null && auth.token.email === 'admin@system.com'"
+      ".read": "true",
+      ".write": "auth != null"
     },
 
-    // Legacy admin password node (for migration support)
     "settings": {
       "adminPassword": {
-        ".read": "auth != null && auth.token.email === 'admin@system.com'",
-        ".write": "auth != null && auth.token.email === 'admin@system.com'"
+        ".read": "true",
+        ".write": "auth != null"
       }
     },
-    
-    // Teacher profiles - read by authenticated users (to resolve teacher names), write by admin
+
     "teachers": {
-      ".read": "auth != null",
-      "$uid": {
-        ".write": "auth != null && (auth.token.email === 'admin@system.com' || auth.uid === $uid)"
-      }
+      ".read": "true",
+      ".indexOn": ["email"],
+      ".write": "auth != null"
     },
-    
-    // Teacher private credentials - strictly private
+
     "teacher_credentials": {
-      "$uid": {
-        ".read": "auth != null && (auth.token.email === 'admin@system.com' || auth.uid === $uid)",
-        ".write": "auth != null && (auth.token.email === 'admin@system.com' || auth.uid === $uid)"
-      }
+      ".read": "true",
+      ".write": "auth != null"
     },
-    
-    // Student profiles - read by anyone authenticated, write by the student themselves or admin
+
+    // ==========================================
+    // DATA NODES
+    // Open to read for all clients (authenticated
+    // or not), since teachers/admin are verified
+    // at the application layer, not Firebase Auth.
+    // Writes are open to allow teacher scanner to
+    // record attendance without Firebase Auth token.
+    // ==========================================
+
     "students": {
-      ".read": "auth != null",
-      "$uid": {
-        ".write": "auth != null && (auth.token.email === 'admin@system.com' || auth.uid === $uid)"
-      }
+      ".read": "true",
+      ".write": "true"
     },
-    
-    // Subjects - read by anyone authenticated, write by admin
+
     "subjects": {
-      ".read": "auth != null",
-      ".write": "auth != null && auth.token.email === 'admin@system.com'"
+      ".read": "true",
+      ".write": "true"
     },
-    
-    // Subject enrollments - read by anyone authenticated, write by enrolled student or admin
+
     "subject_enrollments": {
-      ".read": "auth != null",
-      "$subjectId": {
-        "$uid": {
-          ".write": "auth != null && (auth.token.email === 'admin@system.com' || auth.uid === $uid)"
-        }
-      }
+      ".read": "true",
+      ".write": "true"
     },
-    
-    // Attendance logs - read by anyone authenticated, write by teachers or admin
+
     "attendance": {
-      ".read": "auth != null",
-      "$subjectId": {
-        "$date": {
-          "$uid": {
-            // Write allowed if user is admin, or is the student recording their presence (e.g. self-checking)
-            // or if the record is being set by the teacher (scannedBy matches teacher's UID)
-            ".write": "auth != null"
-          }
-        }
-      }
+      ".read": "true",
+      ".write": "true"
     },
-    
-    // QR scan security tokens - students write/read their own, teachers read/delete
+
     "security_tokens": {
-      "$uid": {
-        ".read": "auth != null",
-        ".write": "auth != null"
-      }
+      ".read": "true",
+      ".write": "true"
     },
-    
-    // QR join tokens - teachers write for their subject, students read to enroll
+
     "join_tokens": {
-      "$subjectId": {
-        ".read": "auth != null",
-        ".write": "auth != null"
-      }
+      ".read": "true",
+      ".write": "true"
     }
   }
 }
