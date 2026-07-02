@@ -784,17 +784,11 @@ function toggleModal(modalEl, show) {
 
 // --- Student Google Auth ---
 async function handleGoogleSignin() {
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   try {
-    if (isMobile) {
-      console.log("[Auth] Mobile device detected, initiating Google Sign-In Redirect...");
-      await signInWithRedirect(auth, googleProvider);
-    } else {
-      console.log("[Auth] Desktop device detected, initiating Google Sign-In Popup...");
-      const result = await signInWithPopup(auth, googleProvider);
-      // onAuthStateChanged will handle profile checks and routing
-      showToast(`Signed in as ${result.user.displayName}`);
-    }
+    console.log("[Auth] Initiating Google Sign-In Popup...");
+    const result = await signInWithPopup(auth, googleProvider);
+    // onAuthStateChanged will handle profile checks and routing
+    showToast(`Signed in as ${result.user.displayName}`);
   } catch (error) {
     console.error("Google Sign-In failed", error);
     showToast("Google Sign-in failed. Please try again.", "error");
