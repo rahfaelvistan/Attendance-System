@@ -46,11 +46,40 @@
 
         <!-- Student Auth -->
         <div id="form-student" class="auth-form active">
-          <p class="auth-form-desc">Sign in with your Google account to mark attendance.</p>
-          <button id="btn-google-signin" class="btn btn-google">
-            <svg viewBox="0 0 24 24" width="20" height="20"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-            Sign in with Google
-          </button>
+          <!-- Student Login Method Tabs -->
+          <div class="student-login-tabs">
+            <button class="student-login-tab active" id="tab-google-login" data-student-tab="google">
+              <svg viewBox="0 0 24 24" width="14" height="14" style="flex-shrink:0"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+              Google
+            </button>
+            <button class="student-login-tab" id="tab-credentials-login" data-student-tab="credentials">
+              <i data-lucide="lock" style="width:14px;height:14px"></i>
+              Username & Password
+            </button>
+          </div>
+
+          <!-- Sub-panel: Google Sign-In -->
+          <div id="student-panel-google" class="student-login-panel active">
+            <p class="auth-form-desc">Sign in with your Google account to mark attendance.</p>
+            <button id="btn-google-signin" class="btn btn-google">
+              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+              Sign in with Google
+            </button>
+          </div>
+
+          <!-- Sub-panel: Username & Password -->
+          <div id="student-panel-credentials" class="student-login-panel">
+            <p class="auth-form-desc">Sign in using credentials assigned by your administrator.</p>
+            <div class="form-field">
+              <label for="student-username"><i data-lucide="user" style="width:13px;height:13px;display:inline;vertical-align:middle;"></i> Username / Student ID</label>
+              <input type="text" id="student-username" class="input" placeholder="e.g. 2024-00001" autocomplete="username">
+            </div>
+            <div class="form-field">
+              <label for="student-password"><i data-lucide="lock" style="width:13px;height:13px;display:inline;vertical-align:middle;"></i> Password</label>
+              <input type="password" id="student-password" class="input" placeholder="••••••••" autocomplete="current-password">
+            </div>
+            <button id="btn-student-password-login" class="btn btn-primary">Sign In</button>
+          </div>
         </div>
 
         <!-- Teacher Auth -->
@@ -94,7 +123,10 @@
             <p id="student-id-display" class="text-muted">ID: N/A</p>
           </div>
         </div>
-        <button id="btn-student-logout" class="btn btn-ghost"><i data-lucide="log-out"></i> <span>Logout</span></button>
+        <div style="display:flex;gap:0.5rem;align-items:center;">
+          <button id="btn-student-change-password" class="btn btn-ghost" title="Change Password" style="display:none;"><i data-lucide="key-round"></i> <span>Password</span></button>
+          <button id="btn-student-logout" class="btn btn-ghost"><i data-lucide="log-out"></i> <span>Logout</span></button>
+        </div>
       </div>
 
       <div class="student-layout">
@@ -286,6 +318,7 @@
       <div class="admin-tab-bar">
         <button class="admin-tab active" data-tab="panel-teachers"><i data-lucide="users"></i> Teachers</button>
         <button class="admin-tab" data-tab="panel-subjects"><i data-lucide="book-open"></i> Subjects</button>
+        <button class="admin-tab" data-tab="panel-students"><i data-lucide="graduation-cap"></i> Students</button>
         <button class="admin-tab" data-tab="panel-settings"><i data-lucide="settings"></i> Settings</button>
       </div>
 
@@ -353,11 +386,111 @@
           <button type="submit" class="btn btn-primary"><i data-lucide="key-round"></i> Update Password</button>
         </form>
       </div>
+
+      <!-- Panel: Students -->
+      <div id="panel-students" class="admin-panel glass-panel">
+        <h4 class="panel-title"><i data-lucide="graduation-cap"></i> Manage Students</h4>
+        <p class="text-muted" style="margin-bottom:1rem; font-size:0.85rem;">Create student accounts with login credentials, or manage existing students.</p>
+
+        <!-- Create Student Account Form -->
+        <form id="add-student-form" class="admin-form-grid" style="margin-bottom:1.5rem;">
+          <div class="form-field"><label>First Name</label><input type="text" id="new-student-first-name" class="input" placeholder="Juan" required></div>
+          <div class="form-field"><label>Last Name</label><input type="text" id="new-student-last-name" class="input" placeholder="Dela Cruz" required></div>
+          <div class="form-field"><label>Middle Name</label><input type="text" id="new-student-middle-name" class="input" placeholder="(Optional)"></div>
+          <div class="form-field"><label>Student ID <span style="color:var(--accent-blue);">(used as username)</span></label><input type="text" id="new-student-id" class="input" placeholder="2024-00001" required></div>
+          <div class="form-field"><label>Initial Password</label><input type="password" id="new-student-password" class="input" placeholder="Set a temporary password" required></div>
+          <div class="form-field form-field-full"><button type="submit" class="btn btn-primary btn-full"><i data-lucide="user-plus"></i> Create Student Account</button></div>
+        </form>
+
+        <div class="admin-table-container">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Student ID</th>
+                <th>Full Name</th>
+                <th>Login Type</th>
+                <th>Subjects</th>
+                <th class="student-actions-header">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="admin-students-tbody"></tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
   </div><!-- /app-wrapper -->
 
   <!-- ================= MODALS ================= -->
+
+  <!-- Admin Edit Student Modal -->
+  <div id="modal-edit-student" class="modal-overlay">
+    <div class="modal-card glass-panel">
+      <div class="modal-card-header">
+        <div>
+          <h3 class="modal-title"><i data-lucide="edit-3"></i> Edit Student Profile</h3>
+          <p id="edit-student-subtitle" class="text-muted">Modify student details</p>
+        </div>
+        <button id="btn-close-edit-student-modal" class="btn-icon"><i data-lucide="x"></i></button>
+      </div>
+      <form id="edit-student-form">
+        <input type="hidden" id="edit-student-uid">
+        <div class="form-field"><label>First Name</label><input type="text" id="edit-student-first-name" class="input" required></div>
+        <div class="form-field"><label>Middle Name</label><input type="text" id="edit-student-middle-name" class="input"></div>
+        <div class="form-field"><label>Last Name</label><input type="text" id="edit-student-last-name" class="input" required></div>
+        <div class="form-field"><label>Student ID Number</label><input type="text" id="edit-student-id-number" class="input" placeholder="e.g. 2024-00001"></div>
+        <button type="submit" class="btn btn-primary btn-full">Save Changes</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Admin Assign Subjects Modal -->
+  <div id="modal-assign-subjects" class="modal-overlay">
+    <div class="modal-card glass-panel">
+      <div class="modal-card-header">
+        <div>
+          <h3 class="modal-title"><i data-lucide="book-marked"></i> Manage Enrollments</h3>
+          <p id="assign-subjects-student-name" class="text-muted">Manage subjects for student</p>
+        </div>
+        <button id="btn-close-assign-subjects-modal" class="btn-icon"><i data-lucide="x"></i></button>
+      </div>
+      <form id="assign-subjects-form">
+        <input type="hidden" id="assign-subjects-student-uid">
+        <div class="form-field">
+          <label>Select Enrolled Subjects</label>
+          <div id="assign-subjects-list" class="subject-checkboxes-container">
+            <!-- Dynamically populated checkboxes of all subjects -->
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Save Enrollments</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Admin Delete Student Warning Confirmation Modal -->
+  <div id="modal-delete-student-confirm" class="modal-overlay">
+    <div class="modal-card glass-panel modal-danger-card">
+      <div class="modal-card-header">
+        <div class="danger-title-row">
+          <div class="danger-icon-badge"><i data-lucide="alert-triangle"></i></div>
+          <div>
+            <h3 class="modal-title text-red">Delete Student Account</h3>
+            <p id="delete-student-confirm-name" class="text-muted">Warning: Action is irreversible</p>
+          </div>
+        </div>
+        <button id="btn-close-delete-student-modal" class="btn-icon"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body text-center" style="padding: 1.5rem 0;">
+        <p class="warning-text">Are you absolutely sure you want to delete this student's profile? This will revoke their Google Sign-In access and clear all their settings. Their attendance records will remain for historical logging, but they will be disconnected from all subjects.</p>
+      </div>
+      <form id="delete-student-form" class="modal-danger-actions">
+        <input type="hidden" id="delete-student-uid">
+        <button type="button" id="btn-cancel-delete-student" class="btn btn-secondary">Cancel</button>
+        <button type="submit" class="btn btn-danger-action">Permanently Delete</button>
+      </form>
+    </div>
+  </div>
+
 
   <!-- Student Registration Modal -->
   <div id="modal-student-registration" class="modal-overlay">
@@ -520,6 +653,49 @@
       </div>
       <p id="student-join-status" class="scanner-status">Initializing camera...</p>
     </div>
+  </div>
+
+  <!-- Student Change Password Modal -->
+  <div id="modal-student-change-password" class="modal-overlay">
+    <div class="modal-card glass-panel">
+      <div class="modal-card-header">
+        <div>
+          <h3 class="modal-title"><i data-lucide="key-round"></i> Change Your Password</h3>
+          <p class="text-muted">Set a new login password for your account</p>
+        </div>
+        <button id="btn-close-student-change-password" class="btn-icon"><i data-lucide="x"></i></button>
+      </div>
+      <form id="student-change-password-form">
+        <div class="form-field"><label>Current Password</label><input type="password" id="student-current-password" class="input" required></div>
+        <div class="form-field"><label>New Password</label><input type="password" id="student-new-password" class="input" required></div>
+        <div class="form-field"><label>Confirm New Password</label><input type="password" id="student-confirm-password" class="input" required></div>
+        <button type="submit" class="btn btn-primary btn-full"><i data-lucide="check-circle"></i> Update Password</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Admin Reset Student Password Modal -->
+  <div id="modal-reset-student-password" class="modal-overlay">
+    <div class="modal-card glass-panel">
+      <div class="modal-card-header">
+        <div>
+          <h3 class="modal-title"><i data-lucide="key-round"></i> Reset Student Password</h3>
+          <p id="reset-student-pwd-subtitle" class="text-muted">Reset password for student</p>
+        </div>
+        <button id="btn-close-reset-student-password" class="btn-icon"><i data-lucide="x"></i></button>
+      </div>
+      <form id="reset-student-password-form">
+        <input type="hidden" id="reset-student-uid">
+        <div class="form-field"><label>New Password</label><input type="password" id="reset-student-new-password" class="input" required placeholder="Enter new password"></div>
+        <button type="submit" class="btn btn-primary btn-full"><i data-lucide="refresh-cw"></i> Reset Password</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Global Real-time Connection Indicator -->
+  <div id="global-connection-status" class="connection-status disconnected">
+    <div class="connection-dot"></div>
+    <span id="connection-text">Offline</span>
   </div>
 
   <!-- Toast Notification -->

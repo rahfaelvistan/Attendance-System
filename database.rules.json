@@ -11,25 +11,25 @@
     // ==========================================
 
     "admin_credentials": {
-      ".read": "true",
+      ".read": true,
       ".write": "auth != null"
     },
 
     "settings": {
       "adminPassword": {
-        ".read": "true",
+        ".read": true,
         ".write": "auth != null"
       }
     },
 
     "teachers": {
-      ".read": "true",
+      ".read": true,
       ".indexOn": ["email"],
       ".write": "auth != null"
     },
 
     "teacher_credentials": {
-      ".read": "true",
+      ".read": true,
       ".write": "auth != null"
     },
 
@@ -43,33 +43,55 @@
     // ==========================================
 
     "students": {
-      ".read": "true",
-      ".write": "true"
+      ".read": true,
+      ".write": true
     },
 
     "subjects": {
-      ".read": "true",
-      ".write": "true"
+      ".read": true,
+      ".write": true
     },
 
     "subject_enrollments": {
-      ".read": "true",
-      ".write": "true"
+      ".read": true,
+      ".write": true
     },
 
     "attendance": {
-      ".read": "true",
-      ".write": "true"
+      ".read": true,
+      ".write": true
     },
 
     "security_tokens": {
-      ".read": "true",
-      ".write": "true"
+      ".read": true,
+      ".write": true
     },
 
     "join_tokens": {
-      ".read": "true",
-      ".write": "true"
+      ".read": true,
+      ".write": true
+    },
+
+    "attendance_tokens": {
+      ".read": true,
+      ".write": true
+    },
+
+    // ==========================================
+    // STUDENT CREDENTIALS NODES
+    // Allows username/password login for students.
+    // student_usernames: username → uid index lookup.
+    // student_credentials: salted hash per student uid.
+    // ==========================================
+
+    "student_credentials": {
+      ".read": true,
+      ".write": true
+    },
+
+    "student_usernames": {
+      ".read": true,
+      ".write": true
     }
   }
 }

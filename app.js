@@ -8,6 +8,8 @@ import {
   getAuth, 
   onAuthStateChanged, 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider, 
   signOut 
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -43,6 +45,19 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
 const googleProvider = new GoogleAuthProvider();
+
+// --- Server Time Synchronization ---
+let serverTimeOffset = 0;
+const offsetRef = ref(db, ".info/serverTimeOffset");
+onValue(offsetRef, (snapshot) => {
+  serverTimeOffset = snapshot.val() || 0;
+  console.log(`[Time Sync] Server time offset calculated: ${serverTimeOffset}ms`);
+});
+
+// Helper function to get current date synchronized with Firebase server time
+function getSyncedDate() {
+  return new Date(Date.now() + serverTimeOffset);
+}
 
 // --- Application State ---
 let state = {
@@ -99,9 +114,19 @@ const el = {
   teacherPassword: document.getElementById('teacher-password'),
   adminEmail: document.getElementById('admin-email'),
   adminPassword: document.getElementById('admin-password'),
+  studentUsername: document.getElementById('student-username'),
+  studentPassword: document.getElementById('student-password'),
+  btnStudentPasswordLogin: document.getElementById('btn-student-password-login'),
   
-  // Logouts
+  // Student Login Tabs
+  tabGoogleLogin: document.getElementById('tab-google-login'),
+  tabCredentialsLogin: document.getElementById('tab-credentials-login'),
+  studentPanelGoogle: document.getElementById('student-panel-google'),
+  studentPanelCredentials: document.getElementById('student-panel-credentials'),
+  
+  // Logouts & Profile Actions
   btnStudentLogout: document.getElementById('btn-student-logout'),
+  btnStudentChangePassword: document.getElementById('btn-student-change-password'),
   btnTeacherLogout: document.getElementById('btn-teacher-logout'),
   btnAdminLogout: document.getElementById('btn-admin-logout'),
   
@@ -159,6 +184,12 @@ const el = {
   adminPanels: document.querySelectorAll('.admin-panel'),
   addTeacherForm: document.getElementById('add-teacher-form'),
   addSubjectForm: document.getElementById('add-subject-form'),
+  addStudentForm: document.getElementById('add-student-form'),
+  newStudentFirstName: document.getElementById('new-student-first-name'),
+  newStudentLastName: document.getElementById('new-student-last-name'),
+  newStudentMiddleName: document.getElementById('new-student-middle-name'),
+  newStudentId: document.getElementById('new-student-id'),
+  newStudentPassword: document.getElementById('new-student-password'),
   adminTeachersTbody: document.getElementById('admin-teachers-tbody'),
   adminSubjectsTbody: document.getElementById('admin-subjects-tbody'),
   subjectTeacherSelect: document.getElementById('subject-teacher'),
@@ -167,6 +198,7 @@ const el = {
   adminStatTeachers: document.getElementById('admin-stat-teachers'),
   adminStatSubjects: document.getElementById('admin-stat-subjects'),
   adminStatRecords: document.getElementById('admin-stat-records'),
+  adminStudentsTbody: document.getElementById('admin-students-tbody'),
   
   // Modals
   modalStudentRegistration: document.getElementById('modal-student-registration'),
@@ -184,6 +216,44 @@ const el = {
   modalFullscreenQr: document.getElementById('modal-fullscreen-qr'),
   fullscreenQrCanvas: document.getElementById('fullscreen-qr-canvas'),
   fullscreenQrTimerText: document.getElementById('fullscreen-qr-timer-text'),
+  
+  // Student & Admin Modals
+  modalStudentChangePassword: document.getElementById('modal-student-change-password'),
+  btnCloseStudentChangePassword: document.getElementById('btn-close-student-change-password'),
+  studentChangePasswordForm: document.getElementById('student-change-password-form'),
+  studentCurrentPassword: document.getElementById('student-current-password'),
+  studentNewPassword: document.getElementById('student-new-password'),
+  studentConfirmPassword: document.getElementById('student-confirm-password'),
+  modalResetStudentPassword: document.getElementById('modal-reset-student-password'),
+  btnCloseResetStudentPassword: document.getElementById('btn-close-reset-student-password'),
+  resetStudentPasswordForm: document.getElementById('reset-student-password-form'),
+  resetStudentUid: document.getElementById('reset-student-uid'),
+  resetStudentNewPassword: document.getElementById('reset-student-new-password'),
+  resetStudentPwdSubtitle: document.getElementById('reset-student-pwd-subtitle'),
+
+  // New Admin Student Management Modals
+  modalEditStudent: document.getElementById('modal-edit-student'),
+  btnCloseEditStudentModal: document.getElementById('btn-close-edit-student-modal'),
+  editStudentForm: document.getElementById('edit-student-form'),
+  editStudentUid: document.getElementById('edit-student-uid'),
+  editStudentFirstName: document.getElementById('edit-student-first-name'),
+  editStudentMiddleName: document.getElementById('edit-student-middle-name'),
+  editStudentLastName: document.getElementById('edit-student-last-name'),
+  editStudentIdNumber: document.getElementById('edit-student-id-number'),
+
+  modalAssignSubjects: document.getElementById('modal-assign-subjects'),
+  btnCloseAssignSubjectsModal: document.getElementById('btn-close-assign-subjects-modal'),
+  assignSubjectsForm: document.getElementById('assign-subjects-form'),
+  assignSubjectsStudentUid: document.getElementById('assign-subjects-student-uid'),
+  assignSubjectsList: document.getElementById('assign-subjects-list'),
+  assignSubjectsStudentName: document.getElementById('assign-subjects-student-name'),
+
+  modalDeleteStudentConfirm: document.getElementById('modal-delete-student-confirm'),
+  btnCloseDeleteStudentModal: document.getElementById('btn-close-delete-student-modal'),
+  btnCancelDeleteStudent: document.getElementById('btn-cancel-delete-student'),
+  deleteStudentForm: document.getElementById('delete-student-form'),
+  deleteStudentUid: document.getElementById('delete-student-uid'),
+  deleteStudentConfirmName: document.getElementById('delete-student-confirm-name'),
   
   // New elements for teacher join QR and student join scanner
   btnTeacherJoinQr: document.getElementById('btn-teacher-join-qr'),
@@ -246,6 +316,25 @@ window.addEventListener('DOMContentLoaded', () => {
 
 function initApp() {
   setupEventListeners();
+
+  // Real-time connection status listener
+  const connectedRef = ref(db, '.info/connected');
+  onValue(connectedRef, (snap) => {
+    const isConnected = snap.val() === true;
+    const statusEl = document.getElementById('global-connection-status');
+    const textEl = document.getElementById('connection-text');
+    if (statusEl && textEl) {
+      if (isConnected) {
+        statusEl.classList.add('connected');
+        statusEl.classList.remove('disconnected');
+        textEl.textContent = 'Online';
+      } else {
+        statusEl.classList.add('disconnected');
+        statusEl.classList.remove('connected');
+        textEl.textContent = 'Offline';
+      }
+    }
+  });
   
   // Register Service Worker for offline/slow network support
   if ('serviceWorker' in navigator) {
@@ -269,12 +358,29 @@ function initApp() {
       } else if (state.userRole === 'admin') {
         routeToView('admin');
         initAdminDashboard();
+      } else if (state.userRole === 'student') {
+        state.studentProfile = session.user;
+        routeToView('student');
+        initStudentDashboard();
       }
     } catch (e) {
       console.error("Failed to parse saved session", e);
       localStorage.removeItem('auraattend_session');
     }
   }
+
+  // Handle Google Sign-in redirect result (for mobile users)
+  getRedirectResult(auth)
+    .then((result) => {
+      if (result && result.user) {
+        console.log("[Auth] Sign-in redirect successful:", result.user.displayName);
+        showToast(`Signed in as ${result.user.displayName}`);
+      }
+    })
+    .catch((error) => {
+      console.error("[Auth] Redirect sign-in error", error);
+      showToast("Google Sign-in failed. Please try again.", "error");
+    });
 
   // Set up Firebase Auth listener (primarily for Students)
   onAuthStateChanged(auth, async (user) => {
@@ -457,6 +563,19 @@ function setupEventListeners() {
   el.adminPasswordForm.addEventListener('submit', handleChangeAdminPassword);
   el.teacherPwdChangeForm.addEventListener('submit', handleSaveTeacherPassword);
   el.studentRegistrationForm.addEventListener('submit', handleSaveStudentProfile);
+
+  // Admin Student Management Modals & Forms
+  if (el.addStudentForm) el.addStudentForm.addEventListener('submit', handleAddStudentAdmin);
+  if (el.editStudentForm) el.editStudentForm.addEventListener('submit', handleEditStudentAdmin);
+  if (el.assignSubjectsForm) el.assignSubjectsForm.addEventListener('submit', handleAssignSubjectsAdmin);
+  if (el.deleteStudentForm) el.deleteStudentForm.addEventListener('submit', handleConfirmDeleteStudentAdmin);
+  if (el.resetStudentPasswordForm) el.resetStudentPasswordForm.addEventListener('submit', handleResetStudentPasswordAdmin);
+
+  if (el.btnCloseEditStudentModal) el.btnCloseEditStudentModal.addEventListener('click', () => toggleModal(el.modalEditStudent, false));
+  if (el.btnCloseAssignSubjectsModal) el.btnCloseAssignSubjectsModal.addEventListener('click', () => toggleModal(el.modalAssignSubjects, false));
+  if (el.btnCloseDeleteStudentModal) el.btnCloseDeleteStudentModal.addEventListener('click', () => toggleModal(el.modalDeleteStudentConfirm, false));
+  if (el.btnCancelDeleteStudent) el.btnCancelDeleteStudent.addEventListener('click', () => toggleModal(el.modalDeleteStudentConfirm, false));
+  if (el.btnCloseResetStudentPassword) el.btnCloseResetStudentPassword.addEventListener('click', () => toggleModal(el.modalResetStudentPassword, false));
 
   // Teacher & Student Subject Joining
   if (el.btnTeacherJoinQr) {
@@ -665,10 +784,17 @@ function toggleModal(modalEl, show) {
 
 // --- Student Google Auth ---
 async function handleGoogleSignin() {
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   try {
-    const result = await signInWithPopup(auth, googleProvider);
-    // onAuthStateChanged will handle profile checks and routing
-    showToast(`Signed in as ${result.user.displayName}`);
+    if (isMobile) {
+      console.log("[Auth] Mobile device detected, initiating Google Sign-In Redirect...");
+      await signInWithRedirect(auth, googleProvider);
+    } else {
+      console.log("[Auth] Desktop device detected, initiating Google Sign-In Popup...");
+      const result = await signInWithPopup(auth, googleProvider);
+      // onAuthStateChanged will handle profile checks and routing
+      showToast(`Signed in as ${result.user.displayName}`);
+    }
   } catch (error) {
     console.error("Google Sign-In failed", error);
     showToast("Google Sign-in failed. Please try again.", "error");
@@ -681,6 +807,10 @@ async function checkStudentProfile(user) {
     const snapshot = await get(ref(db, `students/${user.uid}`));
     if (snapshot.exists()) {
       state.studentProfile = snapshot.val();
+      localStorage.setItem('auraattend_session', JSON.stringify({
+        role: 'student',
+        user: state.studentProfile
+      }));
       routeToView('student');
       initStudentDashboard();
     } else {
@@ -727,6 +857,11 @@ async function handleSaveStudentProfile() {
   try {
     await set(ref(db, `students/${state.currentUser.uid}`), profileData);
     state.studentProfile = profileData;
+
+    localStorage.setItem('auraattend_session', JSON.stringify({
+      role: 'student',
+      user: state.studentProfile
+    }));
     
     toggleModal(el.modalStudentRegistration, false);
     showToast("Registration completed successfully!");
@@ -1099,7 +1234,7 @@ async function generateSecureQR() {
   const subject = state.subjects[state.activeStudentSubject];
   if (!subject) return;
 
-  const now = new Date();
+  const now = getSyncedDate();
   const dateStr = getFormattedDateString(now);
   el.qrDetailDate.textContent = dateStr;
 
@@ -1398,6 +1533,37 @@ function renderTeacherAttendeeList() {
   });
 }
 
+// Robust camera startup helper with automatic fallback for older devices/laptops
+async function startHtml5QrScannerWithFallback(scannerInstance, targetConfig, onSuccess, onFailure) {
+  // First attempt: back camera with constraints (e.g. 1080p resolution)
+  try {
+    await scannerInstance.start({ facingMode: "environment" }, targetConfig, onSuccess, onFailure);
+    return;
+  } catch (err) {
+    console.warn("[Camera] First attempt failed (back camera + constraints). Retrying with back camera only...", err);
+  }
+
+  // Second attempt: environment camera with no resolution constraints
+  try {
+    const fallbackConfig = { ...targetConfig };
+    delete fallbackConfig.videoConstraints;
+    await scannerInstance.start({ facingMode: "environment" }, fallbackConfig, onSuccess, onFailure);
+    return;
+  } catch (err) {
+    console.warn("[Camera] Second attempt failed (back camera only). Retrying with browser default camera...", err);
+  }
+
+  // Third attempt: default browser camera with no constraints
+  try {
+    const finalConfig = { ...targetConfig };
+    delete finalConfig.videoConstraints;
+    await scannerInstance.start({}, finalConfig, onSuccess, onFailure);
+  } catch (err) {
+    console.error("[Camera] All camera initialization attempts failed.", err);
+    throw err; // Propagate the error so calling functions show warnings
+  }
+}
+
 // --- Live QR Code Scanner (html5-qrcode) ---
 function toggleTeacherCamera() {
   if (state.isCameraRunning) {
@@ -1447,8 +1613,8 @@ function startScanner() {
     }
   };
 
-  state.html5QrScanner.start(
-    { facingMode: "environment" }, // back camera by default
+  startHtml5QrScannerWithFallback(
+    state.html5QrScanner,
     config,
     onQrCodeSuccess,
     onQrCodeFailure
@@ -1536,7 +1702,7 @@ function onQrCodeFailure(error) {
 async function validateAndRecordAttendance(qrData) {
   const currentTeacherId = state.teacherProfile.uid;
   const currentSubjectId = state.activeTeacherSubject;
-  const now = new Date();
+  const now = getSyncedDate();
   const todayStr = getFormattedDateString(now);
 
   const uid = qrData.u || qrData.uid;
@@ -1708,6 +1874,7 @@ function loadAdminCachedData() {
       renderAdminTeachersTable();
       populateSubjectTeacherSelect();
       renderAdminSubjectsTable();
+      renderAdminStudentsTable();
       calculateAdminOverviewStats();
     }
   } catch (err) {
@@ -1754,6 +1921,7 @@ function setupAdminRealTimeData() {
       state.students = snapshot.val();
       localStorage.setItem('auraattend_cache_admin_students', JSON.stringify(state.students));
     }
+    renderAdminStudentsTable();
     calculateAdminOverviewStats();
   });
   state.dbListeners.push(unsubStudents);
@@ -2103,6 +2271,319 @@ async function handleChangeAdminPassword(e) {
 }
 
 
+// ================= ADMIN STUDENT MANAGEMENT =================
+
+function renderAdminStudentsTable() {
+  if (!el.adminStudentsTbody) return;
+  el.adminStudentsTbody.innerHTML = '';
+  const list = Object.values(state.students || {});
+
+  if (list.length === 0) {
+    el.adminStudentsTbody.innerHTML = '<tr><td colspan="5" class="text-center">No student accounts registered.</td></tr>';
+    return;
+  }
+
+  list.forEach(student => {
+    const tr = document.createElement('tr');
+    const fullName = `${student.firstName} ${student.middleName ? student.middleName + ' ' : ''}${student.lastName}`;
+    const loginType = student.email ? 'Google' : 'Credentials';
+    
+    // Count enrolled subjects for this student
+    const enrollments = state.subject_enrollments ? Object.keys(state.subject_enrollments).filter(subj => state.subject_enrollments[subj] && state.subject_enrollments[subj][student.uid]) : [];
+    
+    tr.innerHTML = `
+      <td><strong>${student.studentIdNumber || 'N/A'}</strong></td>
+      <td>${fullName}</td>
+      <td><span class="role-badge">${loginType}</span></td>
+      <td>${enrollments.length} Subject(s)</td>
+      <td>
+        <button class="btn-icon" title="Edit Profile" data-action="edit-student" data-uid="${student.uid}">
+          <i data-lucide="edit-3"></i>
+        </button>
+        <button class="btn-icon" title="Assign Subjects" data-action="assign-subjects" data-uid="${student.uid}">
+          <i data-lucide="book-marked"></i>
+        </button>
+        <button class="btn-icon" title="Reset Password" data-action="reset-password" data-uid="${student.uid}" ${loginType === 'Google' ? 'disabled' : ''}>
+          <i data-lucide="key-round"></i>
+        </button>
+        <button class="btn-icon btn-icon-danger" title="Delete Student" data-action="delete-student" data-uid="${student.uid}">
+          <i data-lucide="trash-2"></i>
+        </button>
+      </td>
+    `;
+
+    tr.querySelector('[data-action="edit-student"]').addEventListener('click', () => {
+      openEditStudentModal(student);
+    });
+    tr.querySelector('[data-action="assign-subjects"]').addEventListener('click', () => {
+      openAssignSubjectsModal(student.uid, fullName);
+    });
+    const pwdBtn = tr.querySelector('[data-action="reset-password"]');
+    if (!pwdBtn.disabled) {
+      pwdBtn.addEventListener('click', () => {
+        openResetStudentPasswordModal(student.uid, fullName);
+      });
+    }
+    tr.querySelector('[data-action="delete-student"]').addEventListener('click', () => {
+      openDeleteStudentConfirmModal(student.uid, fullName);
+    });
+
+    el.adminStudentsTbody.appendChild(tr);
+  });
+  
+  lucide.createIcons();
+}
+
+async function handleAddStudentAdmin(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  const firstName = el.newStudentFirstName.value.trim();
+  const lastName = el.newStudentLastName.value.trim();
+  const middleName = el.newStudentMiddleName.value.trim();
+  const studentId = el.newStudentId.value.trim();
+  const password = el.newStudentPassword.value;
+
+  if (!firstName || !lastName || !studentId || !password) {
+    showToast("Required fields are missing.", "error");
+    return;
+  }
+
+  // Check if student ID already exists
+  const existingUsernameSnapshot = await get(ref(db, `student_usernames/${studentId}`));
+  if (existingUsernameSnapshot.exists()) {
+    showToast("Student ID already exists.", "error");
+    return;
+  }
+
+  // Generate unique UID
+  const studentRef = push(ref(db, 'students'));
+  const uid = studentRef.key;
+
+  // Salt and hash the password
+  const salt = generateSalt();
+  const hash = await hashPassword(password, salt);
+
+  const profileData = {
+    uid,
+    firstName,
+    lastName,
+    middleName,
+    studentIdNumber: studentId,
+    registeredAt: serverTimestamp()
+  };
+
+  const usernameData = { uid };
+  const credsData = { salt, hash };
+
+  try {
+    const updates = {};
+    updates[`students/${uid}`] = profileData;
+    updates[`student_usernames/${studentId}`] = usernameData;
+    updates[`student_credentials/${uid}`] = credsData;
+    await update(ref(db), updates);
+    showToast(`Student ${firstName} ${lastName} created successfully.`);
+    el.addStudentForm.reset();
+  } catch (error) {
+    console.error("Failed to create student", error);
+    showToast("Failed to create student", "error");
+  }
+}
+
+function openEditStudentModal(student) {
+  el.editStudentUid.value = student.uid;
+  el.editStudentFirstName.value = student.firstName || '';
+  el.editStudentMiddleName.value = student.middleName || '';
+  el.editStudentLastName.value = student.lastName || '';
+  el.editStudentIdNumber.value = student.studentIdNumber || '';
+  
+  // Store old ID to track if it changes
+  el.editStudentIdNumber.setAttribute('data-old-id', student.studentIdNumber || '');
+  
+  toggleModal(el.modalEditStudent, true);
+}
+
+async function handleEditStudentAdmin(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  const uid = el.editStudentUid.value;
+  const firstName = el.editStudentFirstName.value.trim();
+  const middleName = el.editStudentMiddleName.value.trim();
+  const lastName = el.editStudentLastName.value.trim();
+  const studentId = el.editStudentIdNumber.value.trim();
+  const oldStudentId = el.editStudentIdNumber.getAttribute('data-old-id');
+
+  if (!firstName || !lastName || !studentId) {
+    showToast("Required fields are missing.", "error");
+    return;
+  }
+
+  const updates = {};
+  
+  // If student ID changed, verify the new one doesn't exist and move it
+  if (studentId !== oldStudentId) {
+    const existingSnapshot = await get(ref(db, `student_usernames/${studentId}`));
+    if (existingSnapshot.exists()) {
+      showToast("Student ID already exists.", "error");
+      return;
+    }
+    // Remove old mapping and add new
+    if (oldStudentId) {
+      updates[`student_usernames/${oldStudentId}`] = null;
+    }
+    updates[`student_usernames/${studentId}`] = { uid };
+  }
+
+  updates[`students/${uid}/firstName`] = firstName;
+  updates[`students/${uid}/middleName`] = middleName;
+  updates[`students/${uid}/lastName`] = lastName;
+  updates[`students/${uid}/studentIdNumber`] = studentId;
+
+  try {
+    await update(ref(db), updates);
+    showToast(`Student profile updated.`);
+    toggleModal(el.modalEditStudent, false);
+  } catch (error) {
+    console.error("Failed to update student profile", error);
+    showToast("Update failed", "error");
+  }
+}
+
+async function openAssignSubjectsModal(uid, fullName) {
+  el.assignSubjectsStudentUid.value = uid;
+  el.assignSubjectsStudentName.textContent = `Enrolling: ${fullName}`;
+  el.assignSubjectsList.innerHTML = '';
+  
+  const subjects = Object.values(state.subjects || {});
+  if (subjects.length === 0) {
+    el.assignSubjectsList.innerHTML = '<p class="text-muted text-center" style="padding:1rem;">No subjects available.</p>';
+  } else {
+    // Fetch currently enrolled subjects for this user
+    let currentEnrollments = {};
+    const snapshot = await get(ref(db, 'subject_enrollments'));
+    if (snapshot.exists()) {
+      const allEnroll = snapshot.val();
+      subjects.forEach(subj => {
+        if (allEnroll[subj.id] && allEnroll[subj.id][uid]) {
+          currentEnrollments[subj.id] = true;
+        }
+      });
+    }
+
+    subjects.forEach(subj => {
+      const isEnrolled = currentEnrollments[subj.id] ? 'checked' : '';
+      el.assignSubjectsList.innerHTML += `
+        <label class="subject-checkbox-label">
+          <input type="checkbox" name="student-subjects" value="${subj.id}" class="subject-checkbox" ${isEnrolled}>
+          <div>
+            <strong>${subj.code}</strong>
+            <p>${subj.name} • ${subj.teacherName}</p>
+          </div>
+        </label>
+      `;
+    });
+  }
+  
+  toggleModal(el.modalAssignSubjects, true);
+}
+
+async function handleAssignSubjectsAdmin(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  const uid = el.assignSubjectsStudentUid.value;
+  const checkboxes = document.querySelectorAll('input[name="student-subjects"]');
+  
+  const updates = {};
+  // For each subject, set the enrollment for this UID
+  checkboxes.forEach(cb => {
+    const subjId = cb.value;
+    if (cb.checked) {
+      updates[`subject_enrollments/${subjId}/${uid}`] = { enrolledAt: serverTimestamp() };
+    } else {
+      updates[`subject_enrollments/${subjId}/${uid}`] = null; // Unenroll
+    }
+  });
+
+  try {
+    await update(ref(db), updates);
+    showToast(`Student enrollments saved.`);
+    toggleModal(el.modalAssignSubjects, false);
+    // Refresh table immediately to update count
+    renderAdminStudentsTable();
+  } catch (error) {
+    console.error("Failed to assign subjects", error);
+    showToast("Enrollment update failed.", "error");
+  }
+}
+
+function openResetStudentPasswordModal(uid, fullName) {
+  el.resetStudentUid.value = uid;
+  el.resetStudentPwdSubtitle.textContent = `Resetting password for: ${fullName}`;
+  el.resetStudentNewPassword.value = '';
+  toggleModal(el.modalResetStudentPassword, true);
+}
+
+async function handleResetStudentPasswordAdmin(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  const uid = el.resetStudentUid.value;
+  const newPassword = el.resetStudentNewPassword.value;
+
+  if (!newPassword) {
+    showToast("Password cannot be empty.", "error");
+    return;
+  }
+
+  try {
+    const salt = generateSalt();
+    const hash = await hashPassword(newPassword, salt);
+    
+    await update(ref(db, `student_credentials/${uid}`), { salt, hash });
+    showToast("Student password reset successfully.");
+    toggleModal(el.modalResetStudentPassword, false);
+  } catch (error) {
+    console.error("Failed to reset password", error);
+    showToast("Password reset failed.", "error");
+  }
+}
+
+function openDeleteStudentConfirmModal(uid, fullName) {
+  el.deleteStudentUid.value = uid;
+  el.deleteStudentConfirmName.textContent = `Delete: ${fullName}`;
+  toggleModal(el.modalDeleteStudentConfirm, true);
+}
+
+async function handleConfirmDeleteStudentAdmin(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  const uid = el.deleteStudentUid.value;
+  
+  if (!uid) return;
+  const student = state.students[uid];
+  
+  try {
+    const updates = {};
+    updates[`students/${uid}`] = null;
+    updates[`student_credentials/${uid}`] = null;
+    if (student && student.studentIdNumber) {
+      updates[`student_usernames/${student.studentIdNumber}`] = null;
+    }
+    
+    // Unenroll from all subjects
+    const snapshot = await get(ref(db, 'subject_enrollments'));
+    if (snapshot.exists()) {
+      const allEnroll = snapshot.val();
+      Object.keys(allEnroll).forEach(subjId => {
+        if (allEnroll[subjId] && allEnroll[subjId][uid]) {
+          updates[`subject_enrollments/${subjId}/${uid}`] = null;
+        }
+      });
+    }
+
+    await update(ref(db), updates);
+    showToast("Student account deleted permanently.");
+    toggleModal(el.modalDeleteStudentConfirm, false);
+  } catch (error) {
+    console.error("Failed to delete student", error);
+    showToast("Deletion failed.", "error");
+  }
+}
+
+
 // ================= INTERACTIVE CALENDAR ENGINE =================
 // Renders our fully responsive CSS Grid calendar for students and teachers
 function resetCalendar(role) {
@@ -2440,7 +2921,7 @@ async function generateTeacherJoinQr() {
   if (!subjectId || !state.subjects[subjectId]) return;
 
   const subject = state.subjects[subjectId];
-  const now = new Date();
+  const now = getSyncedDate();
   
   // Generate a random 6-character One-Time Password (OTP) for joining
   const otp = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -2541,8 +3022,8 @@ function openStudentJoinScanner() {
     }
   };
 
-  state.studentJoinQrScanner.start(
-    { facingMode: "environment" },
+  startHtml5QrScannerWithFallback(
+    state.studentJoinQrScanner,
     config,
     onStudentJoinQrSuccess,
     onStudentJoinQrFailure
@@ -2612,7 +3093,7 @@ async function validateAndEnrollSubject(qrData) {
   const subjectId = qrData.s || qrData.subjectId;
   const otp = qrData.o || qrData.otp;
   const timestamp = qrData.t || qrData.timestamp;
-  const now = new Date();
+  const now = getSyncedDate();
 
   if (!studentUid || !subjectId || !otp || !timestamp) {
     showToast("Malformed Join QR code.", "error");
@@ -2767,7 +3248,7 @@ async function generateTeacherAttendanceQr() {
   const subjectId = state.activeAttendanceSubjectId;
   if (!subjectId || !state.subjects[subjectId]) return;
 
-  const now = new Date();
+  const now = getSyncedDate();
 
   // Generate a cryptographic one-time-password
   const otp = Math.random().toString(36).substring(2, 10).toUpperCase();
@@ -2875,8 +3356,8 @@ function openStudentAttendanceScanner() {
     }
   };
 
-  state.studentAttendanceQrScanner.start(
-    { facingMode: "environment" },
+  startHtml5QrScannerWithFallback(
+    state.studentAttendanceQrScanner,
     config,
     onStudentAttendanceQrSuccess,
     onStudentAttendanceQrFailure
@@ -2959,7 +3440,7 @@ async function validateAndRecordStudentAttendance(qrData) {
   const subjectId = qrData.s || qrData.subjectId;
   const otp = qrData.o || qrData.otp;
   const qrTimestamp = qrData.t || qrData.timestamp;
-  const now = new Date();
+  const now = getSyncedDate();
   const todayStr = getFormattedDateString(now);
 
   // --- 1. Basic field validation ---
